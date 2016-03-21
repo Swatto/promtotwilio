@@ -21,7 +21,7 @@ all: build
 #-----------------------------------------------------------------------------
 
 .built: .
-	@CGO_ENABLED=0 GOOS=linux go build -installsuffix cgo -o promtotwilio .
+	@CGO_ENABLED=0 GOOS=linux go build -ldflags "-s" -a -installsuffix cgo -o promtotwilio .
 	docker build -t $(CONTAINER_NAME) .
 	@docker inspect -f '{{.Id}}' $(CONTAINER_NAME) > .built
 	@go clean
