@@ -1,10 +1,10 @@
 package main
 
 type options struct {
-	AccountSid string `long:"sid"`
-	AuthToken  string `long:"token"`
-	Receiver   string `long:"receiver"`
-	Sender     string `long:"sender"`
+	AccountSid string
+	AuthToken  string
+	Receiver   string
+	Sender     string
 }
 
 type alertData struct {
