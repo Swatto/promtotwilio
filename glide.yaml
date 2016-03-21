@@ -1,0 +1,4 @@
+package: github.com/Swatto/promtotwilio
+import:
+- package: github.com/Sirupsen/logrus
+- package: github.com/carlosdp/twiliogo
