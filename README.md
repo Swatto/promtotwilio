@@ -4,7 +4,7 @@
 
 This is a simple and stupid program that will receive webhooks from [Prometheus](https://prometheus.io/) to send a text message (using [Twilio](https://www.twilio.com/)) with the summary of the alert.
 
-The docker image size is less than 15Mo.
+The [docker image](https://hub.docker.com/r/swatto/promtotwilio/) size is less than 15Mo.
 
 ## Configuration
 
