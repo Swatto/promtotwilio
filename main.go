@@ -7,6 +7,13 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
+type options struct {
+	AccountSid string
+	AuthToken  string
+	Receiver   string
+	Sender     string
+}
+
 func main() {
 	opts := options{
 		AccountSid: os.Getenv("SID"),
