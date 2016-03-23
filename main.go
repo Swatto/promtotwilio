@@ -1,10 +1,10 @@
 package main
 
 import (
-	"net/http"
 	"os"
 
 	log "github.com/Sirupsen/logrus"
+	"github.com/valyala/fasthttp"
 )
 
 func main() {
@@ -19,9 +19,8 @@ func main() {
 		log.Fatal("'SID', 'TOKEN', 'RECEIVER' and 'SENDER' environment variables need to be set")
 	}
 
-	m := NewMuxWithOptions(&opts)
-
-	err := http.ListenAndServe(":9090", m.Mux)
+	o := NewMOptionsWithHandler(&opts)
+	err := fasthttp.ListenAndServe(":9090", o.HandleFastHTTP)
 	if err != nil {
 		log.Fatal("ListenAndServe: ", err)
 	}
