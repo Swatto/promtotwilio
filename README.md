@@ -4,6 +4,8 @@ This is a simple and stupid program that will receive webhooks from [Prometheus]
 
 The [Docker image](https://hub.docker.com/r/swatto/promtotwilio/) size is less than 15Mo.
 
+![Docker Pulls](https://img.shields.io/docker/pulls/swatto/promtotwilio.svg?style=flat-square)
+
 ## Configuration
 
 It needs 4 environment variables:
