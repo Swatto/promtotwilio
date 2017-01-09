@@ -3,7 +3,8 @@
 #-----------------------------------------------------------------------------
 
 # name of container
-CONTAINER_NAME = swatto/promtotwilio:latest
+CONTAINER_NAME = swatto/promtotwilio
+CONTAINER_VERSION = 1.1
 
 # name of instance and other options you want to pass to docker run for testing
 INSTANCE_NAME = promtotwilio
@@ -17,22 +18,33 @@ all	 : ## Build the container - this is the default action
 all: build
 
 #-----------------------------------------------------------------------------
+# get dependencies
+#-----------------------------------------------------------------------------
+
+deps : ## Get go depdencies
+deps:
+	@go get github.com/valyala/fasthttp
+	@go get github.com/Sirupsen/logrus
+	@go get github.com/buger/jsonparser
+	@go get github.com/carlosdp/twiliogo
+
+#-----------------------------------------------------------------------------
 # build container
 #-----------------------------------------------------------------------------
 
 .built: .
 	@CGO_ENABLED=0 GOOS=linux go build -ldflags "-s" -a -installsuffix cgo -o promtotwilio .
-	docker build -t $(CONTAINER_NAME) .
-	@docker inspect -f '{{.Id}}' $(CONTAINER_NAME) > .built
+	docker build -t $(CONTAINER_NAME):latest -t $(CONTAINER_NAME):$(CONTAINER_VERSION) .
+	@docker inspect -f '{{.Id}}' $(CONTAINER_NAME):$(CONTAINER_VERSION) > .built
 	@go clean
 
 build	: ## build the container
-build: .built
+build: deps .built
 
 clean	: ## delete the image from docker
 clean: stop
 	@$(RM) .built
-	-docker rmi $(CONTAINER_NAME)
+	-docker rmi $(CONTAINER_NAME):$(CONTAINER_VERSION)
 
 re	: ## clean and rebuild
 re: clean all
@@ -43,15 +55,20 @@ re: clean all
 
 push	: ## Push container to remote repository
 push: build
-	docker push $(CONTAINER_NAME)
+	docker push $(CONTAINER_NAME):$(CONTAINER_VERSION)
+	docker push $(CONTAINER_NAME):latest
 
-pull	: ## Pull container from remote repository - might speed up rebuilds
+pull	: ## Pull container from remote repository
 pull:
-	docker pull $(CONTAINER_NAME)
+	docker pull $(CONTAINER_NAME):$(CONTAINER_VERSION)
 
 #-----------------------------------------------------------------------------
 # test container
 #-----------------------------------------------------------------------------
+
+test : ## Run tests
+test:
+	go test .
 
 run	 : ## Run the container as a daemon locally for testing
 run: build stop
