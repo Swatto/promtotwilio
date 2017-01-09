@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"regexp"
+	"strings"
 	"time"
 
 	log "github.com/Sirupsen/logrus"
@@ -47,13 +49,12 @@ func (m OptionsWithHandler) sendRequest(ctx *fasthttp.RequestCtx) {
 			ctx.SetStatusCode(fasthttp.StatusNotAcceptable)
 		} else {
 			body := ctx.PostBody()
-			status, _, _, _ := jsonparser.Get(body, "status")
+			status, _ := jsonparser.GetString(body, "status")
 
-			if string(status) == "firing" {
-				alerts, _, _, _ := jsonparser.Get(body, "alerts")
-				jsonparser.ArrayEach(alerts, func(alert []byte, dataType int, offset int, err error) {
+			if status == "firing" {
+				jsonparser.ArrayEach(body, func(alert []byte, dataType jsonparser.ValueType, offset int, err error) {
 					go sendMessage(m.Options, alert)
-				})
+				}, "alerts")
 			}
 		}
 	}
@@ -61,13 +62,12 @@ func (m OptionsWithHandler) sendRequest(ctx *fasthttp.RequestCtx) {
 
 func sendMessage(o *options, alert []byte) {
 	c := twilio.NewClient(o.AccountSid, o.AuthToken)
-	summary, _, _, _ := jsonparser.Get(alert, "annotations", "summary")
+	body, _ := jsonparser.GetString(alert, "annotations", "summary")
 
-	if string(summary) != "" {
-		body := string(summary)
-
-		startsAt, _, _, _ := jsonparser.Get(alert, "startsAt")
-		parsedStartsAt, err := time.Parse(time.RFC3339, string(startsAt))
+	if body != "" {
+		body = findAndReplaceLables(body, alert)
+		startsAt, _ := jsonparser.GetString(alert, "startsAt")
+		parsedStartsAt, err := time.Parse(time.RFC3339, startsAt)
 		if err == nil {
 			body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
 		}
@@ -81,4 +81,21 @@ func sendMessage(o *options, alert []byte) {
 	} else {
 		log.Error("Bad format")
 	}
+}
+
+func findAndReplaceLables(body string, alert []byte) string {
+	labelReg := regexp.MustCompile(`\$labels.[a-z]+`)
+	matches := labelReg.FindAllString(body, -1)
+
+	if matches != nil {
+		for _, match := range matches {
+			labelName := strings.Split(match, ".")
+			if len(labelName) == 2 {
+				replaceWith, _ := jsonparser.GetString(alert, "labels", labelName[1])
+				body = strings.Replace(body, match, replaceWith, -1)
+			}
+		}
+	}
+
+	return body
 }
