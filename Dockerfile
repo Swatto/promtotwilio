@@ -1,8 +1,16 @@
-FROM alpine:3.3
+FROM golang:1.9-alpine3.7 as builder
 
-RUN apk add --update ca-certificates && \
-    rm -rf /var/cache/apk/* /tmp/*
+WORKDIR /go/src/github.com/swatto/promtotwilio/
+COPY . .
+
+ENV CGO_ENABLED=0
+RUN go build -o promtotwilio .
+
+FROM alpine:3.7
+
 EXPOSE 9090
+RUN apk add --update --no-cache ca-certificates
+WORKDIR /root/
 
-COPY promtotwilio /bin
-ENTRYPOINT ["/bin/promtotwilio"]
+COPY --from=builder /go/src/github.com/swatto/promtotwilio/promtotwilio .
+ENTRYPOINT ["./promtotwilio"]
