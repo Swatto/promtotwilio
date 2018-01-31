@@ -22,7 +22,7 @@ You can see a basic launch inside the Makefile.
 ```bash
 $ curl -H "Content-Type: application/json" -X POST -d \
 '{"version":"2","status":"firing","alerts":[{"annotations":{"summary":"Server down"},"startsAt":"2016-03-19T05:54:01Z"}]}' \
-http://local.docker:9090/send
+http://localhost:9090/send
 ```
 
 ## Configuration example
