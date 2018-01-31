@@ -18,17 +18,6 @@ all	 : ## Build the container - this is the default action
 all: build
 
 #-----------------------------------------------------------------------------
-# get dependencies
-#-----------------------------------------------------------------------------
-
-deps : ## Get go depdencies
-deps:
-	@go get github.com/valyala/fasthttp
-	@go get github.com/Sirupsen/logrus
-	@go get github.com/buger/jsonparser
-	@go get github.com/carlosdp/twiliogo
-
-#-----------------------------------------------------------------------------
 # build container
 #-----------------------------------------------------------------------------
 
