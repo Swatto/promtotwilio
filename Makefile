@@ -21,18 +21,11 @@ all: build
 # build container
 #-----------------------------------------------------------------------------
 
-.built: .
-	@CGO_ENABLED=0 GOOS=linux go build -ldflags "-s" -a -installsuffix cgo -o promtotwilio .
+build   : ## build the container
 	docker build -t $(CONTAINER_NAME):latest -t $(CONTAINER_NAME):$(CONTAINER_VERSION) .
-	@docker inspect -f '{{.Id}}' $(CONTAINER_NAME):$(CONTAINER_VERSION) > .built
-	@go clean
-
-build	: ## build the container
-build: deps .built
 
 clean	: ## delete the image from docker
 clean: stop
-	@$(RM) .built
 	-docker rmi $(CONTAINER_NAME):$(CONTAINER_VERSION)
 
 re	: ## clean and rebuild
