@@ -12,17 +12,25 @@ It needs 4 environment variables:
 
 - `SID` - Twilio Account SID
 - `TOKEN` - Twilio Auth Token
-- `RECEIVER` - Phone number of receiver
+- `RECEIVER` - Phone number of receiver (optional parameter, representing default receiver)
 - `SENDER` - Phone number managed by Twilio (friendly name)
 
 You can see a basic launch inside the Makefile.
 
+## API
+
+`/`: ping promtotwilio application. Returns 200 OK if application works fine.
+
+`/send?receiver=<rcv>`: send Prometheus firing alerts from payload to a rcv if specified, or to default receiver, represented by RECEIVER environment variable. If none is specified, status code 400 BadRequest is returned.
+
 ## Test it
+
+To send test sms to a phone +zxxxyyyyyyy use the following command (please notice `%2B` symbols, representing a url encoded `+` sign)
 
 ```bash
 $ curl -H "Content-Type: application/json" -X POST -d \
 '{"version":"2","status":"firing","alerts":[{"annotations":{"summary":"Server down"},"startsAt":"2016-03-19T05:54:01Z"}]}' \
-http://localhost:9090/send
+http://localhost:9090/send?receiver=%2Bzxxxyyyyyyy
 ```
 
 ## Configuration example
