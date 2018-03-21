@@ -42,7 +42,7 @@ func (m OptionsWithHandler) ping(ctx *fasthttp.RequestCtx) {
 }
 
 func (m OptionsWithHandler) sendRequest(ctx *fasthttp.RequestCtx) {
-	if ctx.IsPost() == false {
+	if !ctx.IsPost() {
 		ctx.SetStatusCode(fasthttp.StatusMethodNotAllowed)
 	} else {
 		if string(ctx.Request.Header.Peek("Content-Type")) != "application/json" {
@@ -51,10 +51,27 @@ func (m OptionsWithHandler) sendRequest(ctx *fasthttp.RequestCtx) {
 			body := ctx.PostBody()
 			status, _ := jsonparser.GetString(body, "status")
 
+			sendOptions := m.Options
+			const rcvKey = "receiver"
+			args := ctx.QueryArgs()
+			if nil != args && args.Has(rcvKey) {
+				rcv := string(args.Peek(rcvKey))
+				sendOptions.Receiver = rcv
+			}
+
+			if sendOptions.Receiver == "" {
+				ctx.SetStatusCode(fasthttp.StatusBadRequest)
+				log.Error("Bad request: receiver not specified")
+				return
+			}
+
 			if status == "firing" {
-				jsonparser.ArrayEach(body, func(alert []byte, dataType jsonparser.ValueType, offset int, err error) {
-					go sendMessage(m.Options, alert)
+				_, err := jsonparser.ArrayEach(body, func(alert []byte, dataType jsonparser.ValueType, offset int, err error) {
+					go sendMessage(sendOptions, alert)
 				}, "alerts")
+				if err != nil {
+					log.Warnf("Error parsing json: %v", err)
+				}
 			}
 		}
 	}
