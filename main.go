@@ -22,8 +22,8 @@ func main() {
 		Sender:     os.Getenv("SENDER"),
 	}
 
-	if opts.AccountSid == "" || opts.AuthToken == "" || opts.Receiver == "" || opts.Sender == "" {
-		log.Fatal("'SID', 'TOKEN', 'RECEIVER' and 'SENDER' environment variables need to be set")
+	if opts.AccountSid == "" || opts.AuthToken == "" || opts.Sender == "" {
+		log.Fatal("'SID', 'TOKEN' and 'SENDER' environment variables need to be set")
 	}
 
 	o := NewMOptionsWithHandler(&opts)
