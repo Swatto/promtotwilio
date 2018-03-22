@@ -4,7 +4,7 @@
 
 # name of container
 CONTAINER_NAME = swatto/promtotwilio
-CONTAINER_VERSION = 1.2
+CONTAINER_VERSION = 1.3
 
 # name of instance and other options you want to pass to docker run for testing
 INSTANCE_NAME = promtotwilio
