@@ -1,4 +1,4 @@
-FROM golang:1.9-alpine3.7 as builder
+FROM golang:1.10-alpine3.7 as builder
 
 WORKDIR /go/src/github.com/swatto/promtotwilio/
 COPY . .
