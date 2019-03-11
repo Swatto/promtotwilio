@@ -4,7 +4,7 @@
 
 # name of container
 CONTAINER_NAME = swatto/promtotwilio
-CONTAINER_VERSION = 1.3
+CONTAINER_VERSION = 1.4
 
 # name of instance and other options you want to pass to docker run for testing
 INSTANCE_NAME = promtotwilio
@@ -54,7 +54,7 @@ test:
 
 run	 : ## Run the container as a daemon locally for testing
 run: build stop
-	docker run -d --name=$(INSTANCE_NAME) $(RUN_OPTS) $(CONTAINER_NAME)
+	docker run -it  --rm --name=$(INSTANCE_NAME) $(RUN_OPTS) $(CONTAINER_NAME)
 
 stop	: ## Stop local test started by run
 stop:
