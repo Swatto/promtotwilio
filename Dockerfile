@@ -1,16 +1,27 @@
-FROM golang:1.10-alpine3.7 as builder
+FROM golang:1.12-alpine3.9 as builder
 
-WORKDIR /go/src/github.com/swatto/promtotwilio/
-COPY . .
+RUN mkdir /user && \
+    echo 'nobody:x:65534:65534:nobody:/:' > /user/passwd && \
+    echo 'nobody:x:65534:' > /user/group
 
-ENV CGO_ENABLED=0
-RUN go build -o promtotwilio .
+WORKDIR /src
+RUN apk add --update --no-cache ca-certificates git
 
-FROM alpine:3.7
+COPY ./go.mod ./go.sum ./
+RUN go mod download
+
+COPY ./ ./
+RUN CGO_ENABLED=0 go build \
+    -installsuffix 'static' \
+    -o /promtotwilio .
+
+FROM scratch
+
+COPY --from=builder /user/group /user/passwd /etc/
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /promtotwilio /promtotwilio
 
 EXPOSE 9090
-RUN apk add --update --no-cache ca-certificates
-WORKDIR /root/
+USER nobody:nobody
 
-COPY --from=builder /go/src/github.com/swatto/promtotwilio/promtotwilio .
 ENTRYPOINT ["./promtotwilio"]
