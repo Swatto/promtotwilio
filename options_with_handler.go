@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	log "github.com/Sirupsen/logrus"
 	"github.com/buger/jsonparser"
 	twilio "github.com/carlosdp/twiliogo"
+	log "github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
 )
 
