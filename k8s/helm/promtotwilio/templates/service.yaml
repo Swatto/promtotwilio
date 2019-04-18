@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "promtotwilio.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "promtotwilio.name" . }}
+    helm.sh/chart: {{ include "promtotwilio.chart" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: promtotwilio
+      protocol: TCP
+      name: promtotwilio
+  selector:
+    app.kubernetes.io/name: {{ include "promtotwilio.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
