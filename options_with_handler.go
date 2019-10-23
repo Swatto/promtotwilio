@@ -51,7 +51,8 @@ func (m OptionsWithHandler) sendRequest(ctx *fasthttp.RequestCtx) {
 			body := ctx.PostBody()
 			status, _ := jsonparser.GetString(body, "status")
 
-			sendOptions := m.Options
+			sendOptions := new(options)
+			*sendOptions = *m.Options
 			const rcvKey = "receiver"
 			args := ctx.QueryArgs()
 			if nil != args && args.Has(rcvKey) {
