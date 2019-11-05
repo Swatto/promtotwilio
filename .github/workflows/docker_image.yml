@@ -11,3 +11,4 @@ jobs:
         name: swatto/promtotwilio
         username: swatto
         password: ${{ secrets.DOCKER_PASSWORD }}
+		tag_names: true
