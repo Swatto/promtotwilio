@@ -4,7 +4,6 @@
 
 # name of container
 CONTAINER_NAME = swatto/promtotwilio
-CONTAINER_VERSION = 1.4
 
 # name of instance and other options you want to pass to docker run for testing
 INSTANCE_NAME = promtotwilio
@@ -22,27 +21,14 @@ all: build
 #-----------------------------------------------------------------------------
 
 build   : ## build the container
-	docker build -t $(CONTAINER_NAME):latest -t $(CONTAINER_NAME):$(CONTAINER_VERSION) .
+	docker build -t $(CONTAINER_NAME):latest .
 
 clean	: ## delete the image from docker
 clean: stop
-	-docker rmi $(CONTAINER_NAME):$(CONTAINER_VERSION)
+	-docker rmi $(CONTAINER_NAME):latest
 
 re	: ## clean and rebuild
 re: clean all
-
-#-----------------------------------------------------------------------------
-# repository control
-#-----------------------------------------------------------------------------
-
-push	: ## Push container to remote repository
-push: build
-	docker push $(CONTAINER_NAME):$(CONTAINER_VERSION)
-	docker push $(CONTAINER_NAME):latest
-
-pull	: ## Pull container from remote repository
-pull:
-	docker pull $(CONTAINER_NAME):$(CONTAINER_VERSION)
 
 #-----------------------------------------------------------------------------
 # test container
@@ -68,4 +54,4 @@ stop:
 help	: ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
-.PHONY : all build clean re push pull run stop help
+.PHONY : all build clean re run stop help
