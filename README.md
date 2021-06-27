@@ -13,7 +13,7 @@ It needs 4 environment variables:
 - `SID` - Twilio Account SID
 - `TOKEN` - Twilio Auth Token
 - `RECEIVER` - Phone number of receiver (optional parameter, representing default receiver)
-- `SENDER` - Phone number managed by Twilio (friendly name)
+- `SENDER` - Phone number managed by Twilio (full number, formatted with a '+' and country code)
 
 You can see a basic launch inside the Makefile.
 
@@ -92,4 +92,13 @@ receivers:
 - name: 'admin'
   webhook_configs:
   - url: 'http://sms:9090/send'
+```
+
+Here's an example alert with message reported in the `summary` annotation field:
+
+```yml
+  - alert: NodeDown
+    expr: up == 0
+    annotations:
+      summary: '{{ $labels.instance }} is down'
 ```
