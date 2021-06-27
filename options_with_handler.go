@@ -67,38 +67,48 @@ func (m OptionsWithHandler) sendRequest(ctx *fasthttp.RequestCtx) {
 			}
 
 			if status == "firing" {
+				var errors []error
 				_, err := jsonparser.ArrayEach(body, func(alert []byte, dataType jsonparser.ValueType, offset int, err error) {
-					go sendMessage(sendOptions, alert)
+					if err := sendMessage(sendOptions, alert); err != nil {
+						errors = append(errors, err)
+					}
 				}, "alerts")
 				if err != nil {
 					log.Warnf("Error parsing json: %v", err)
+				}
+				if len(errors) > 0 {
+					ctx.SetStatusCode(fasthttp.StatusBadRequest)
+					log.Error(errors)
 				}
 			}
 		}
 	}
 }
 
-func sendMessage(o *options, alert []byte) {
+func sendMessage(o *options, alert []byte) error {
 	c := twilio.NewClient(o.AccountSid, o.AuthToken)
-	body, _ := jsonparser.GetString(alert, "annotations", "summary")
-
-	if body != "" {
-		body = findAndReplaceLables(body, alert)
-		startsAt, _ := jsonparser.GetString(alert, "startsAt")
-		parsedStartsAt, err := time.Parse(time.RFC3339, startsAt)
-		if err == nil {
-			body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
-		}
-
-		message, err := twilio.NewMessage(c, o.Sender, o.Receiver, twilio.Body(body))
-		if err != nil {
-			log.Error(err)
-		} else {
-			log.Infof("Message %s", message.Status)
-		}
-	} else {
-		log.Error("Bad format")
+	body, err := jsonparser.GetString(alert, "annotations", "summary")
+	if err != nil {
+		return fmt.Errorf("summary field not found in alert annotations: %s", alert)
 	}
+
+	body = findAndReplaceLables(body, alert)
+	startsAt, err := jsonparser.GetString(alert, "startsAt")
+	if err != nil {
+		return err
+	}
+	parsedStartsAt, err := time.Parse(time.RFC3339, startsAt)
+	if err == nil {
+		body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
+	}
+
+	message, err := twilio.NewMessage(c, o.Sender, o.Receiver, twilio.Body(body))
+	if err != nil {
+		return err
+	} else {
+		log.Infof("Message %s", message.Status)
+	}
+	return nil
 }
 
 func findAndReplaceLables(body string, alert []byte) string {
