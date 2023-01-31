@@ -15,6 +15,9 @@ It needs 4 environment variables:
 - `RECEIVER` - Phone number of receiver (optional parameter, representing default receiver)
 - `SENDER` - Phone number managed by Twilio (friendly name)
 
+By default promtotwilio listens on port 9090. You can select a different port
+by setting the `PORT` environment variable.
+
 You can see a basic launch inside the Makefile.
 
 ## API
