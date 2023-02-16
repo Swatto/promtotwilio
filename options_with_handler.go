@@ -68,7 +68,19 @@ func (m OptionsWithHandler) sendRequest(ctx *fasthttp.RequestCtx) {
 
 			if status == "firing" {
 				_, err := jsonparser.ArrayEach(body, func(alert []byte, dataType jsonparser.ValueType, offset int, err error) {
-					go sendMessage(sendOptions, alert)
+
+					receivers := strings.Split(sendOptions.Receiver, ",")
+					for _, r := range receivers {
+						so := new(options)
+						so.AccountSid = sendOptions.AccountSid
+						so.AuthToken  = sendOptions.AuthToken
+						so.Sender     = sendOptions.Sender
+						so.Receiver   = r
+						log.Infof("Receiver: %v", so.Receiver)
+						go sendMessage(so, alert)
+					}
+
+
 				}, "alerts")
 				if err != nil {
 					log.Warnf("Error parsing json: %v", err)
