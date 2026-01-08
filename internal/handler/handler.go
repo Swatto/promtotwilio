@@ -16,10 +16,10 @@ import (
 
 // Config holds the configuration for the handler
 type Config struct {
+	Receivers     []string // slice first for optimal alignment
 	AccountSid    string
 	AuthToken     string
 	Sender        string
-	Receivers     []string
 	TwilioBaseURL string // Optional: override Twilio API base URL (for testing)
 }
 
