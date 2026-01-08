@@ -1,0 +1,14 @@
+global:
+  resolve_timeout: 1m
+
+route:
+  receiver: 'sms'
+  group_wait: 1s
+  group_interval: 1s
+  repeat_interval: 1h
+
+receivers:
+  - name: 'sms'
+    webhook_configs:
+      - url: 'http://promtotwilio:9090/send?receiver=%2B1234567890'
+        send_resolved: false

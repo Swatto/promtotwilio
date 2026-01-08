@@ -1,0 +1,40 @@
+services:
+  mock-twilio:
+    build:
+      context: ./test/mock-twilio
+      dockerfile: Dockerfile
+
+  promtotwilio:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      SID: test-account-sid
+      TOKEN: test-auth-token
+      SENDER: "+15551234567"
+      PORT: "9090"
+      TWILIO_BASE_URL: "http://mock-twilio:8080"
+    depends_on:
+      - mock-twilio
+
+  alertmanager:
+    image: prom/alertmanager:v0.30.0
+    volumes:
+      - ./test/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--log.level=debug'
+    depends_on:
+      - promtotwilio
+
+  e2e-tests:
+    build:
+      context: ./test/e2e
+      dockerfile: Dockerfile
+    environment:
+      APP_URL: "http://promtotwilio:9090"
+      ALERTMANAGER_URL: "http://alertmanager:9093"
+      MOCK_TWILIO_URL: "http://mock-twilio:8080"
+    depends_on:
+      - promtotwilio
+      - alertmanager

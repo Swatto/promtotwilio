@@ -1,0 +1,253 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.2.3)'
+        required: true
+        type: string
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Display coverage
+        run: go tool cover -func=coverage.out
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Build
+        run: go build -v ./cmd/promtotwilio
+
+  e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [build]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and run E2E tests
+        run: |
+          docker compose -f docker-compose.e2e.yml build
+          docker compose -f docker-compose.e2e.yml run --rm e2e-tests
+
+      - name: Show logs on failure
+        if: failure()
+        run: |
+          docker compose -f docker-compose.e2e.yml logs
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f docker-compose.e2e.yml down -v --remove-orphans
+
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [test, lint, build, e2e]
+    if: github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Validate version format
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Error: Version must be in format v1.2.3"
+            exit 1
+          fi
+
+      - name: Create and push tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ inputs.version }}" -m "Release ${{ inputs.version }}"
+          git push origin "${{ inputs.version }}"
+
+      - name: Build binaries
+        run: |
+          mkdir -p dist
+          VERSION="${{ inputs.version }}"
+
+          # Linux amd64
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o dist/promtotwilio-linux-amd64 ./cmd/promtotwilio
+          
+          # Linux arm64
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o dist/promtotwilio-linux-arm64 ./cmd/promtotwilio
+          
+          # Darwin amd64
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o dist/promtotwilio-darwin-amd64 ./cmd/promtotwilio
+          
+          # Darwin arm64
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
+            -o dist/promtotwilio-darwin-arm64 ./cmd/promtotwilio
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ inputs.version }}" \
+            --title "Release ${{ inputs.version }}" \
+            --generate-notes \
+            dist/promtotwilio-linux-amd64 \
+            dist/promtotwilio-linux-arm64 \
+            dist/promtotwilio-darwin-amd64 \
+            dist/promtotwilio-darwin-arm64
+
+  docker:
+    name: Docker
+    runs-on: ubuntu-latest
+    needs: [test, lint, build, e2e, release]
+    # Only run for: push to main/master (prerelease) or workflow_dispatch (official release)
+    # Skip for: pull_request
+    if: |
+      always() &&
+      needs.test.result == 'success' &&
+      needs.lint.result == 'success' &&
+      needs.build.result == 'success' &&
+      needs.e2e.result == 'success' &&
+      (needs.release.result == 'success' || needs.release.result == 'skipped') &&
+      github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch latest tags
+        if: github.event_name == 'workflow_dispatch'
+        run: git fetch --tags
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+            echo "is_release=true" >> $GITHUB_OUTPUT
+          else
+            # Prerelease: use branch name and short SHA
+            echo "version=${{ github.ref_name }}-${{ github.sha }}" >> $GITHUB_OUTPUT
+            echo "is_release=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract metadata for Docker (official release)
+        if: github.event_name == 'workflow_dispatch'
+        id: meta-release
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ inputs.version }}
+            type=semver,pattern={{version}},value=${{ inputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.version }}
+            type=semver,pattern={{major}},value=${{ inputs.version }}
+            type=raw,value=latest
+
+      - name: Extract metadata for Docker (prerelease)
+        if: github.event_name == 'push'
+        id: meta-prerelease
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ github.ref_name }}
+            type=sha,prefix=${{ github.ref_name }}-
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ github.event_name == 'workflow_dispatch' && steps.meta-release.outputs.tags || steps.meta-prerelease.outputs.tags }}
+          labels: ${{ github.event_name == 'workflow_dispatch' && steps.meta-release.outputs.labels || steps.meta-prerelease.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
