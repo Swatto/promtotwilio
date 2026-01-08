@@ -1,21 +1,30 @@
-FROM golang:1.13-alpine3.10 as builder
+FROM golang:1.23-alpine AS builder
 
 RUN mkdir /user && \
     echo 'nobody:x:65534:65534:nobody:/:' > /user/passwd && \
     echo 'nobody:x:65534:' > /user/group
 
 WORKDIR /src
-RUN apk add --update --no-cache ca-certificates git
+RUN apk add --update --no-cache ca-certificates
 
 COPY ./go.mod ./go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 COPY ./ ./
-RUN CGO_ENABLED=0 go build \
-    -installsuffix 'static' \
-    -o /promtotwilio .
+
+ARG VERSION=dev
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build \
+    -trimpath \
+    -ldflags "-s -w -X main.Version=${VERSION}" \
+    -o /promtotwilio ./cmd/promtotwilio
 
 FROM scratch
+
+LABEL org.opencontainers.image.source="https://github.com/swatto/promtotwilio"
+LABEL org.opencontainers.image.description="Prometheus to Twilio bridge"
 
 COPY --from=builder /user/group /user/passwd /etc/
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
@@ -24,4 +33,4 @@ COPY --from=builder /promtotwilio /promtotwilio
 EXPOSE 9090
 USER nobody:nobody
 
-ENTRYPOINT ["./promtotwilio"]
+ENTRYPOINT ["/promtotwilio"]
