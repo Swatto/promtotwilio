@@ -15,11 +15,13 @@ import (
 )
 
 // Config holds the configuration for the handler
+//
+//nolint:govet // fieldalignment: minor optimization not worth reduced readability
 type Config struct {
-	Receivers     []string // slice first for optimal alignment
 	AccountSid    string
 	AuthToken     string
 	Sender        string
+	Receivers     []string
 	TwilioBaseURL string // Optional: override Twilio API base URL (for testing)
 }
 
