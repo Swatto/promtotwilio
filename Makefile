@@ -9,49 +9,85 @@ CONTAINER_NAME = swatto/promtotwilio
 INSTANCE_NAME = promtotwilio
 RUN_OPTS = -p 9090:9090 --env-file ./.env
 
+# Go parameters
+GOCMD = go
+GOBUILD = $(GOCMD) build
+GOTEST = $(GOCMD) test
+GOFMT = $(GOCMD) fmt
+GOVET = $(GOCMD) vet
+BINARY_NAME = promtotwilio
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
+
 #-----------------------------------------------------------------------------
 # default target
 #-----------------------------------------------------------------------------
 
-all	 : ## Build the container - this is the default action
-all: build
+all: ## Build the container - this is the default action
+all: build-docker
 
 #-----------------------------------------------------------------------------
-# build container
+# Go targets
 #-----------------------------------------------------------------------------
 
-build   : ## build the container
+build: ## Build the Go binary
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/promtotwilio
+
+test: ## Run tests
+	$(GOTEST) -v -race ./...
+
+coverage: ## Run tests with coverage
+	$(GOTEST) -v -race -coverprofile=coverage.out ./...
+	$(GOCMD) tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
+
+fmt: ## Format code
+	$(GOFMT) ./...
+
+vet: ## Run go vet
+	$(GOVET) ./...
+
+lint: ## Run golangci-lint
+	golangci-lint run
+
+#-----------------------------------------------------------------------------
+# Docker targets
+#-----------------------------------------------------------------------------
+
+build-docker: ## Build the Docker container
 	docker build -t $(CONTAINER_NAME):latest .
 
-clean	: ## delete the image from docker
+clean: ## Delete the image from docker
 clean: stop
 	-docker rmi $(CONTAINER_NAME):latest
+	-rm -f $(BINARY_NAME) coverage.out coverage.html
 
-re	: ## clean and rebuild
+re: ## Clean and rebuild
 re: clean all
 
-#-----------------------------------------------------------------------------
-# test container
-#-----------------------------------------------------------------------------
+run: ## Run the container as a daemon locally for testing
+run: build-docker stop
+	docker run -it --rm --name=$(INSTANCE_NAME) $(RUN_OPTS) $(CONTAINER_NAME)
 
-test : ## Run tests
-test:
-	go test .
-
-run	 : ## Run the container as a daemon locally for testing
-run: build stop
-	docker run -it  --rm --name=$(INSTANCE_NAME) $(RUN_OPTS) $(CONTAINER_NAME)
-
-stop	: ## Stop local test started by run
-stop:
+stop: ## Stop local test started by run
 	-docker stop $(INSTANCE_NAME)
 	-docker rm $(INSTANCE_NAME)
+
+#-----------------------------------------------------------------------------
+# Development targets
+#-----------------------------------------------------------------------------
+
+dev: ## Run locally for development
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/promtotwilio
+	./$(BINARY_NAME)
+
+check: fmt vet lint test ## Run all checks (fmt, vet, lint, test)
 
 #-----------------------------------------------------------------------------
 # supporting targets
 #-----------------------------------------------------------------------------
 
-help	: ## Show this help.
+help: ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
-.PHONY : all build clean re run stop help
+.PHONY: all build test coverage fmt vet lint build-docker clean re run stop dev check help
