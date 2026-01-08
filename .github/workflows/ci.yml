@@ -136,19 +136,19 @@ jobs:
           VERSION="${{ inputs.version }}"
 
           # Linux amd64
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.version=${VERSION}" \
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-linux-amd64 ./cmd/promtotwilio
-
+          
           # Linux arm64
-          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.version=${VERSION}" \
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-linux-arm64 ./cmd/promtotwilio
-
+          
           # Darwin amd64
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.version=${VERSION}" \
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-darwin-amd64 ./cmd/promtotwilio
-
+          
           # Darwin arm64
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.version=${VERSION}" \
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-darwin-arm64 ./cmd/promtotwilio
 
       - name: Create GitHub Release
