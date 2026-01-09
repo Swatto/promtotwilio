@@ -51,7 +51,7 @@ jobs:
           go-version: "1.23"
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
           version: latest
 
@@ -138,15 +138,15 @@ jobs:
           # Linux amd64
           GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-linux-amd64 ./cmd/promtotwilio
-          
+
           # Linux arm64
           GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-linux-arm64 ./cmd/promtotwilio
-          
+
           # Darwin amd64
           GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-darwin-amd64 ./cmd/promtotwilio
-          
+
           # Darwin arm64
           GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-darwin-arm64 ./cmd/promtotwilio
