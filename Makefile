@@ -33,6 +33,13 @@ all: build-docker
 build: ## Build the Go binary
 	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/promtotwilio
 
+build-all: ## Build binaries for all platforms (used by CI release)
+	@mkdir -p dist
+	GOOS=linux GOARCH=amd64 $(GOBUILD) -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY_NAME)-linux-amd64 ./cmd/promtotwilio
+	GOOS=linux GOARCH=arm64 $(GOBUILD) -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY_NAME)-linux-arm64 ./cmd/promtotwilio
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY_NAME)-darwin-amd64 ./cmd/promtotwilio
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) -ldflags="-s -w -X main.Version=$(VERSION)" -o dist/$(BINARY_NAME)-darwin-arm64 ./cmd/promtotwilio
+
 test: ## Run tests
 	$(GOTEST) -v -race ./...
 
@@ -61,6 +68,7 @@ clean: ## Delete the image from docker
 clean: stop
 	-docker rmi $(CONTAINER_NAME):latest
 	-rm -f $(BINARY_NAME) coverage.out coverage.html
+	-rm -rf dist
 
 re: ## Clean and rebuild
 re: clean all
@@ -90,4 +98,4 @@ check: fmt vet lint test ## Run all checks (fmt, vet, lint, test)
 help: ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
-.PHONY: all build test coverage fmt vet lint build-docker clean re run stop dev check help
+.PHONY: all build build-all test coverage fmt vet lint build-docker clean re run stop dev check help

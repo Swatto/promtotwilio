@@ -29,11 +29,8 @@ jobs:
         with:
           go-version: "1.23"
 
-      - name: Download dependencies
-        run: go mod download
-
-      - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+      - name: Run tests with coverage
+        run: make coverage
 
       - name: Display coverage
         run: go tool cover -func=coverage.out
@@ -68,7 +65,7 @@ jobs:
           go-version: "1.23"
 
       - name: Build
-        run: go build -v ./cmd/promtotwilio
+        run: make build
 
   e2e:
     name: E2E Tests
@@ -131,25 +128,7 @@ jobs:
           git push origin "${{ inputs.version }}"
 
       - name: Build binaries
-        run: |
-          mkdir -p dist
-          VERSION="${{ inputs.version }}"
-
-          # Linux amd64
-          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o dist/promtotwilio-linux-amd64 ./cmd/promtotwilio
-
-          # Linux arm64
-          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o dist/promtotwilio-linux-arm64 ./cmd/promtotwilio
-
-          # Darwin amd64
-          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o dist/promtotwilio-darwin-amd64 ./cmd/promtotwilio
-
-          # Darwin arm64
-          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o dist/promtotwilio-darwin-arm64 ./cmd/promtotwilio
+        run: make build-all VERSION=${{ inputs.version }}
 
       - name: Generate release notes
         id: release-notes
