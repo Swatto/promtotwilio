@@ -711,8 +711,8 @@ func TestSendMessage_AlertNameWithResolved(t *testing.T) {
 func TestSendMessage_WithPrefix(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
-		Receivers:    []string{"+1234567890"},
-		Sender:       "+0987654321",
+		Receivers:     []string{"+1234567890"},
+		Sender:        "+0987654321",
 		MessagePrefix: "[PROD]",
 	}, mockClient, "test")
 
@@ -794,8 +794,8 @@ func TestSendMessage_WithoutPrefix(t *testing.T) {
 func TestSendMessage_EmptyPrefix(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
-		Receivers:    []string{"+1234567890"},
-		Sender:       "+0987654321",
+		Receivers:     []string{"+1234567890"},
+		Sender:        "+0987654321",
 		MessagePrefix: "",
 	}, mockClient, "test")
 
@@ -832,8 +832,8 @@ func TestSendMessage_EmptyPrefix(t *testing.T) {
 func TestSendMessage_PrefixWithSpecialChars(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
-		Receivers:    []string{"+1234567890"},
-		Sender:       "+0987654321",
+		Receivers:     []string{"+1234567890"},
+		Sender:        "+0987654321",
 		MessagePrefix: "[ENV:PROD-01]",
 	}, mockClient, "test")
 
@@ -870,9 +870,9 @@ func TestSendMessage_PrefixWithSpecialChars(t *testing.T) {
 func TestSendMessage_PrefixWithResolved(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
-		Receivers:    []string{"+1234567890"},
-		Sender:       "+0987654321",
-		SendResolved: true,
+		Receivers:     []string{"+1234567890"},
+		Sender:        "+0987654321",
+		SendResolved:  true,
 		MessagePrefix: "[PROD]",
 	}, mockClient, "test")
 
@@ -912,9 +912,9 @@ func TestSendMessage_PrefixWithResolved(t *testing.T) {
 func TestSendMessage_PrefixTruncation(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
-		Receivers:       []string{"+1234567890"},
-		Sender:          "+0987654321",
-		MessagePrefix:   "[VERY-LONG-PREFIX-THAT-TAKES-MANY-CHARACTERS]",
+		Receivers:        []string{"+1234567890"},
+		Sender:           "+0987654321",
+		MessagePrefix:    "[VERY-LONG-PREFIX-THAT-TAKES-MANY-CHARACTERS]",
 		MaxMessageLength: 50,
 	}, mockClient, "test")
 
@@ -956,8 +956,8 @@ func TestSendMessage_PrefixTruncation(t *testing.T) {
 func TestSendMessage_Truncation(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
-		Receivers:       []string{"+1234567890"},
-		Sender:          "+0987654321",
+		Receivers:        []string{"+1234567890"},
+		Sender:           "+0987654321",
 		MaxMessageLength: 50,
 	}, mockClient, "test")
 
@@ -997,8 +997,8 @@ func TestSendMessage_Truncation(t *testing.T) {
 func TestSendMessage_CustomMaxLength(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
-		Receivers:       []string{"+1234567890"},
-		Sender:          "+0987654321",
+		Receivers:        []string{"+1234567890"},
+		Sender:           "+0987654321",
 		MaxMessageLength: 100,
 	}, mockClient, "test")
 
