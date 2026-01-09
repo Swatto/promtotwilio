@@ -73,7 +73,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 // Ping handles the ping endpoint
 func (h *Handler) Ping(w http.ResponseWriter, r *http.Request) {
 	if _, err := io.WriteString(w, "ping"); err != nil {
-		slog.Error("Failed to write ping response", "error", err)
+		slog.Error("ping: failed to write response", "error", err)
 	}
 }
 
@@ -87,7 +87,7 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		slog.Error("Failed to encode health response", "error", err)
+		slog.Error("health: failed to encode JSON response", "error", err)
 	}
 }
 
@@ -97,14 +97,20 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	// Handle Content-Type case-insensitively and allow charset parameters
 	// e.g., "application/json", "Application/JSON", "application/json; charset=utf-8"
 	if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
-		http.Error(w, "Content-Type must be application/json", http.StatusNotAcceptable)
+		slog.Error("send: invalid Content-Type", "content_type", contentType)
+		http.Error(w, "send: Content-Type must be application/json", http.StatusNotAcceptable)
 		return
 	}
 
-	defer r.Body.Close()
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			slog.Error("send: failed to close request body", "error", err)
+		}
+	}()
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodySize))
 	if err != nil {
-		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		slog.Error("send: failed to read request body", "error", err)
+		http.Error(w, "send: failed to read request body", http.StatusBadRequest)
 		return
 	}
 
@@ -117,8 +123,8 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(receivers) == 0 {
-		slog.Error("Bad request: receiver not specified")
-		http.Error(w, "receiver not specified", http.StatusBadRequest)
+		slog.Error("send: no receiver specified")
+		http.Error(w, "send: receiver not specified", http.StatusBadRequest)
 		return
 	}
 
@@ -156,8 +162,8 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		}, "alerts")
 
 		if err != nil {
-			slog.Error("Error parsing alerts array", "error", err)
-			http.Error(w, "Invalid alerts format in request body", http.StatusBadRequest)
+			slog.Error("send: failed to parse alerts array", "error", err)
+			http.Error(w, "send: invalid alerts format in request body", http.StatusBadRequest)
 			return
 		}
 
@@ -174,15 +180,15 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		slog.Error("Failed to encode send response", "error", err)
+		slog.Error("send: failed to encode JSON response", "error", err)
 	}
 }
 
 func (h *Handler) sendMessage(receiver string, alert []byte) error {
 	body, err := jsonparser.GetString(alert, "annotations", "summary")
 	if err != nil || body == "" {
-		slog.Error("Bad format: missing summary annotation")
-		return fmt.Errorf("missing summary annotation")
+		slog.Error("send: alert missing summary annotation")
+		return fmt.Errorf("alert missing summary annotation")
 	}
 
 	body = FindAndReplaceLabels(body, alert)
@@ -195,7 +201,7 @@ func (h *Handler) sendMessage(receiver string, alert []byte) error {
 	}
 
 	if err := h.Client.SendMessage(receiver, h.Config.Sender, body); err != nil {
-		slog.Error("Failed to send SMS", "receiver", receiver, "error", err)
+		slog.Error("twilio: failed to send SMS", "receiver", receiver, "error", err)
 		return err
 	}
 
