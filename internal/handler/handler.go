@@ -152,7 +152,9 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		}, "alerts")
 
 		if err != nil {
-			slog.Warn("Error parsing json", "error", err)
+			slog.Error("Error parsing alerts array", "error", err)
+			http.Error(w, "Invalid alerts format in request body", http.StatusBadRequest)
+			return
 		}
 
 		wg.Wait()

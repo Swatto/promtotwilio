@@ -275,6 +275,35 @@ func TestSendRequest_TwilioError(t *testing.T) {
 	}
 }
 
+func TestSendRequest_InvalidAlertsFormat(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	// alerts is not an array - should return 400
+	payload := `{
+		"status": "firing",
+		"alerts": "not-an-array"
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
+	}
+
+	// No messages should be sent
+	if mockClient.CallCount() != 0 {
+		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
 func TestSendRequest_NotFiring(t *testing.T) {
 	mockClient := &MockTwilioClient{}
 	h := NewWithClient(&Config{
