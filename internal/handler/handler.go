@@ -6,17 +6,12 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/buger/jsonparser"
 )
-
-// labelReg matches $labels.xxx placeholders in alert messages.
-// Compiled once at package init for performance.
-var labelReg = regexp.MustCompile(`\$labels\.[a-zA-Z_][a-zA-Z0-9_]*`)
 
 // maxBodySize is the maximum allowed request body size (5 MB).
 // This prevents denial-of-service attacks via large request bodies
@@ -191,49 +186,10 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) sendMessage(receiver string, alert []byte, status string) error {
-	// Try to get summary first
-	body, err := jsonparser.GetString(alert, "annotations", "summary")
-	
-	// If summary is missing or empty (including whitespace-only), try description as fallback
-	if err != nil || strings.TrimSpace(body) == "" {
-		body, err = jsonparser.GetString(alert, "annotations", "description")
-		if err != nil || strings.TrimSpace(body) == "" {
-			slog.Error("send: alert missing summary and description annotations")
-			return fmt.Errorf("alert missing summary and description annotations")
-		}
+	body, err := FormatMessage(alert, status, h.Config)
+	if err != nil {
+		return err
 	}
-
-	body = FindAndReplaceLabels(body, alert)
-
-	// startsAt is optional - only include timestamp if present and valid
-	if startsAt, err := jsonparser.GetString(alert, "startsAt"); err == nil {
-		if parsedStartsAt, err := time.Parse(time.RFC3339, startsAt); err == nil {
-			body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
-		}
-	}
-
-	// Extract alert name from labels.alertname (always present per AlertManager spec, but handle gracefully)
-	alertName, _ := jsonparser.GetString(alert, "labels", "alertname")
-	if strings.TrimSpace(alertName) != "" {
-		body = "[" + alertName + "] " + body
-	}
-
-	// Add "RESOLVED: " prefix for resolved alerts
-	if status == "resolved" {
-		body = "RESOLVED: " + body
-	}
-
-	// Add custom message prefix if configured (added last so it appears first in final message)
-	if h.Config.MessagePrefix != "" {
-		body = h.Config.MessagePrefix + " " + body
-	}
-
-	// Truncate message if it exceeds maximum length
-	maxLen := h.Config.MaxMessageLength
-	if maxLen <= 0 {
-		maxLen = 150 // Default to 150 if not set or invalid
-	}
-	body = truncateMessage(body, maxLen)
 
 	if err := h.Client.SendMessage(receiver, h.Config.Sender, body); err != nil {
 		slog.Error("twilio: failed to send SMS", "receiver", receiver, "error", err)
@@ -242,47 +198,4 @@ func (h *Handler) sendMessage(receiver string, alert []byte, status string) erro
 
 	slog.Info("Message sent", "receiver", receiver)
 	return nil
-}
-
-// ParseReceivers splits a comma-separated string of phone numbers into a slice
-func ParseReceivers(receivers string) []string {
-	if receivers == "" {
-		return nil
-	}
-	parts := strings.Split(receivers, ",")
-	result := make([]string, 0, len(parts))
-	for _, p := range parts {
-		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
-			result = append(result, trimmed)
-		}
-	}
-	return result
-}
-
-// FindAndReplaceLabels replaces $labels.xxx placeholders with actual label values
-func FindAndReplaceLabels(body string, alert []byte) string {
-	matches := labelReg.FindAllString(body, -1)
-
-	for _, match := range matches {
-		labelName := strings.Split(match, ".")
-		if len(labelName) == 2 {
-			replaceWith, _ := jsonparser.GetString(alert, "labels", labelName[1]) //nolint:errcheck // missing label replaced with empty string
-			body = strings.ReplaceAll(body, match, replaceWith)
-		}
-	}
-
-	return body
-}
-
-// truncateMessage truncates a message to the specified maximum length, adding "..." if truncated.
-// If maxLen is <= 3, it truncates without the "..." suffix.
-func truncateMessage(msg string, maxLen int) string {
-	if len(msg) <= maxLen {
-		return msg
-	}
-	if maxLen <= 3 {
-		return msg[:maxLen]
-	}
-	return msg[:maxLen-3] + "..."
 }
