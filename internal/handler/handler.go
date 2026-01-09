@@ -18,6 +18,11 @@ import (
 // Compiled once at package init for performance.
 var labelReg = regexp.MustCompile(`\$labels\.[a-zA-Z_][a-zA-Z0-9_]*`)
 
+// maxBodySize is the maximum allowed request body size (5 MB).
+// This prevents denial-of-service attacks via large request bodies
+// while allowing for large alerts or many receivers.
+const maxBodySize = 5 << 20
+
 // Config holds the configuration for the handler
 //
 //nolint:govet // fieldalignment: minor optimization not worth reduced readability
@@ -92,7 +97,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodySize))
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return

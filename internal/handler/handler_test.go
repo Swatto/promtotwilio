@@ -359,6 +359,46 @@ func TestParseReceivers(t *testing.T) {
 	}
 }
 
+func TestSendRequest_BodySizeLimitEnforced(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	// Create a payload larger than maxBodySize (5 MB)
+	// The body will be truncated, causing JSON parsing to fail
+	largePayload := make([]byte, maxBodySize+1000)
+	for i := range largePayload {
+		largePayload[i] = 'x'
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewReader(largePayload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	// The request should succeed (200 OK) but with 0 messages sent
+	// because the truncated body is invalid JSON
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	// No messages should be sent since the JSON is invalid/truncated
+	if resp.Sent != 0 {
+		t.Errorf("expected sent 0, got %d", resp.Sent)
+	}
+	if mockClient.CallCount() != 0 {
+		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
 func TestFindAndReplaceLabels(t *testing.T) {
 	alert := []byte(`
       {
