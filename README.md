@@ -274,7 +274,7 @@ groups:
       summary: '{{ $labels.instance }} is down'
 ```
 
-**Note:** The `summary` annotation is **required**. Alerts without a `summary` annotation will fail with a "missing summary annotation" error.
+**Note:** Either the `summary` or `description` annotation is **required**. If `summary` is missing or empty, `description` will be used as a fallback. Alerts without both annotations will fail with a "missing summary and description annotations" error.
 
 ### Resolved Alerts
 

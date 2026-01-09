@@ -190,10 +190,16 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) sendMessage(receiver string, alert []byte, status string) error {
+	// Try to get summary first
 	body, err := jsonparser.GetString(alert, "annotations", "summary")
-	if err != nil || body == "" {
-		slog.Error("send: alert missing summary annotation")
-		return fmt.Errorf("alert missing summary annotation")
+	
+	// If summary is missing or empty (including whitespace-only), try description as fallback
+	if err != nil || strings.TrimSpace(body) == "" {
+		body, err = jsonparser.GetString(alert, "annotations", "description")
+		if err != nil || strings.TrimSpace(body) == "" {
+			slog.Error("send: alert missing summary and description annotations")
+			return fmt.Errorf("alert missing summary and description annotations")
+		}
 	}
 
 	body = FindAndReplaceLabels(body, alert)

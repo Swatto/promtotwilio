@@ -674,7 +674,7 @@ func TestSendRequest_MissingSummaryAnnotation(t *testing.T) {
 		Sender:    "+0987654321",
 	}, mockClient, "test")
 
-	// Alert without summary annotation
+	// Alert without summary annotation but with description - should use description as fallback
 	payload := `{
 		"status": "firing",
 		"alerts": [{
@@ -689,8 +689,9 @@ func TestSendRequest_MissingSummaryAnnotation(t *testing.T) {
 
 	h.SendRequest(w, req)
 
-	if w.Code != http.StatusInternalServerError {
-		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	// Should succeed now because description is used as fallback
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
 	var resp SendResponse
@@ -698,14 +699,20 @@ func TestSendRequest_MissingSummaryAnnotation(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	if resp.Success {
-		t.Errorf("expected success false, got true")
+	if !resp.Success {
+		t.Errorf("expected success true, got false")
 	}
-	if resp.Failed != 1 {
-		t.Errorf("expected failed 1, got %d", resp.Failed)
+	if resp.Sent != 1 {
+		t.Errorf("expected sent 1, got %d", resp.Sent)
 	}
-	if mockClient.CallCount() != 0 {
-		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	if mockClient.CallCount() != 1 {
+		t.Errorf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	// Verify the message contains the description
+	call := mockClient.GetCall(0)
+	if !strings.Contains(call.Body, "Some description without summary") {
+		t.Errorf("expected message to contain description, got %q", call.Body)
 	}
 }
 
@@ -1096,5 +1103,238 @@ func TestSendMessage_DefaultMaxLength(t *testing.T) {
 	// Should default to 150
 	if len(call.Body) > 150 {
 		t.Errorf("expected message length <= 150 (default), got %d: %q", len(call.Body), call.Body)
+	}
+}
+
+func TestSendMessage_SummaryOnly(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "Test summary"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if !strings.Contains(call.Body, "Test summary") {
+		t.Errorf("expected message to contain 'Test summary', got %q", call.Body)
+	}
+}
+
+func TestSendMessage_DescriptionFallback(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"description": "Test description"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if !strings.Contains(call.Body, "Test description") {
+		t.Errorf("expected message to contain 'Test description', got %q", call.Body)
+	}
+}
+
+func TestSendMessage_SummaryPreferred(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {
+				"summary": "Test summary",
+				"description": "Test description"
+			},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if !strings.Contains(call.Body, "Test summary") {
+		t.Errorf("expected message to contain 'Test summary' (preferred), got %q", call.Body)
+	}
+	if strings.Contains(call.Body, "Test description") {
+		t.Errorf("expected message to use summary, not description, got %q", call.Body)
+	}
+}
+
+func TestSendMessage_BothMissing(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Success {
+		t.Errorf("expected success false, got true")
+	}
+	if resp.Failed != 1 {
+		t.Errorf("expected failed 1, got %d", resp.Failed)
+	}
+	if len(resp.Errors) == 0 {
+		t.Errorf("expected error message, got none")
+	} else if !strings.Contains(resp.Errors[0], "summary and description") {
+		t.Errorf("expected error to mention both summary and description, got %q", resp.Errors[0])
+	}
+	if mockClient.CallCount() != 0 {
+		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
+func TestSendMessage_EmptySummaryUsesDescription(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {
+				"summary": "",
+				"description": "Test description"
+			},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if !strings.Contains(call.Body, "Test description") {
+		t.Errorf("expected message to contain 'Test description' (fallback), got %q", call.Body)
+	}
+}
+
+func TestSendMessage_WhitespaceOnlySummaryUsesDescription(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {
+				"summary": "   ",
+				"description": "Test description"
+			},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if !strings.Contains(call.Body, "Test description") {
+		t.Errorf("expected message to contain 'Test description' (fallback for whitespace-only summary), got %q", call.Body)
 	}
 }
