@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -515,5 +516,269 @@ func TestFindAndReplaceLabels(t *testing.T) {
 
 	if output != expected {
 		t.Errorf("FindAndReplaceLabels(%q, alert) == %q, want %q", input, output, expected)
+	}
+}
+
+func TestSendRequest_MissingSummaryAnnotation(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	// Alert without summary annotation
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"description": "Some description without summary"},
+			"startsAt": "2024-01-01T12:00:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Success {
+		t.Errorf("expected success false, got true")
+	}
+	if resp.Failed != 1 {
+		t.Errorf("expected failed 1, got %d", resp.Failed)
+	}
+	if mockClient.CallCount() != 0 {
+		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
+func TestSendRequest_EmptySummaryAnnotation(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	// Alert with empty summary annotation
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": ""},
+			"startsAt": "2024-01-01T12:00:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Success {
+		t.Errorf("expected success false, got true")
+	}
+	if resp.Failed != 1 {
+		t.Errorf("expected failed 1, got %d", resp.Failed)
+	}
+	if mockClient.CallCount() != 0 {
+		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
+func TestSendRequest_MissingStartsAt(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	// Alert without startsAt field - should still succeed
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "Test alert without timestamp"}
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !resp.Success {
+		t.Errorf("expected success true, got false")
+	}
+	if resp.Sent != 1 {
+		t.Errorf("expected sent 1, got %d", resp.Sent)
+	}
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	// Message should not contain timestamp formatting
+	call := mockClient.GetCall(0)
+	if strings.Contains(call.Body, "alert starts at") {
+		t.Errorf("expected message without timestamp, got %q", call.Body)
+	}
+	if call.Body != "Test alert without timestamp" {
+		t.Errorf("expected body 'Test alert without timestamp', got %q", call.Body)
+	}
+}
+
+func TestSendRequest_InvalidStartsAtFormat(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	// Alert with invalid startsAt format - should still succeed but without timestamp
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "Test alert with bad timestamp"},
+			"startsAt": "not-a-valid-timestamp"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !resp.Success {
+		t.Errorf("expected success true, got false")
+	}
+	if resp.Sent != 1 {
+		t.Errorf("expected sent 1, got %d", resp.Sent)
+	}
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	// Message should not contain timestamp formatting due to invalid format
+	call := mockClient.GetCall(0)
+	if strings.Contains(call.Body, "alert starts at") {
+		t.Errorf("expected message without timestamp, got %q", call.Body)
+	}
+	if call.Body != "Test alert with bad timestamp" {
+		t.Errorf("expected body 'Test alert with bad timestamp', got %q", call.Body)
+	}
+}
+
+func TestSendRequest_ValidStartsAtFormat(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	// Message should contain properly formatted timestamp
+	call := mockClient.GetCall(0)
+	expectedBody := `"Test alert" alert starts at Mon, 15 Jan 2024 10:30:00 UTC`
+	if call.Body != expectedBody {
+		t.Errorf("expected body %q, got %q", expectedBody, call.Body)
+	}
+}
+
+func TestSendRequest_MissingAnnotationsField(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	// Alert without annotations field at all
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"labels": {"alertname": "TestAlert"},
+			"startsAt": "2024-01-01T12:00:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if resp.Success {
+		t.Errorf("expected success false, got true")
+	}
+	if resp.Failed != 1 {
+		t.Errorf("expected failed 1, got %d", resp.Failed)
+	}
+	if mockClient.CallCount() != 0 {
+		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
 	}
 }

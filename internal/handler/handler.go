@@ -179,22 +179,22 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) sendMessage(receiver string, alert []byte) error {
-	body, _ := jsonparser.GetString(alert, "annotations", "summary") //nolint:errcheck // empty string is acceptable
-
-	if body == "" {
+	body, err := jsonparser.GetString(alert, "annotations", "summary")
+	if err != nil || body == "" {
 		slog.Error("Bad format: missing summary annotation")
 		return fmt.Errorf("missing summary annotation")
 	}
 
 	body = FindAndReplaceLabels(body, alert)
-	startsAt, _ := jsonparser.GetString(alert, "startsAt") //nolint:errcheck // startsAt is optional
-	parsedStartsAt, err := time.Parse(time.RFC3339, startsAt)
-	if err == nil {
-		body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
+
+	// startsAt is optional - only include timestamp if present and valid
+	if startsAt, err := jsonparser.GetString(alert, "startsAt"); err == nil {
+		if parsedStartsAt, err := time.Parse(time.RFC3339, startsAt); err == nil {
+			body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
+		}
 	}
 
-	err = h.Client.SendMessage(receiver, h.Config.Sender, body)
-	if err != nil {
+	if err := h.Client.SendMessage(receiver, h.Config.Sender, body); err != nil {
 		slog.Error("Failed to send SMS", "receiver", receiver, "error", err)
 		return err
 	}
