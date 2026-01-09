@@ -14,6 +14,10 @@ import (
 	"github.com/buger/jsonparser"
 )
 
+// labelReg matches $labels.xxx placeholders in alert messages.
+// Compiled once at package init for performance.
+var labelReg = regexp.MustCompile(`\$labels\.[a-zA-Z_][a-zA-Z0-9_]*`)
+
 // Config holds the configuration for the handler
 //
 //nolint:govet // fieldalignment: minor optimization not worth reduced readability
@@ -123,6 +127,10 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		_, err := jsonparser.ArrayEach(body, func(alert []byte, dataType jsonparser.ValueType, offset int, err error) {
 			for _, receiver := range receivers {
 				wg.Add(1)
+				// Copy alert data to avoid race condition when passing to goroutine
+				// This ensures each goroutine has its own independent copy of the alert data
+				alertCopy := make([]byte, len(alert))
+				copy(alertCopy, alert)
 				go func(rcv string, alertData []byte) {
 					defer wg.Done()
 					sendErr := h.sendMessage(rcv, alertData)
@@ -134,7 +142,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 					} else {
 						sent++
 					}
-				}(receiver, alert)
+				}(receiver, alertCopy)
 			}
 		}, "alerts")
 
@@ -202,7 +210,6 @@ func ParseReceivers(receivers string) []string {
 
 // FindAndReplaceLabels replaces $labels.xxx placeholders with actual label values
 func FindAndReplaceLabels(body string, alert []byte) string {
-	labelReg := regexp.MustCompile(`\$labels\.[a-zA-Z_][a-zA-Z0-9_]*`)
 	matches := labelReg.FindAllString(body, -1)
 
 	for _, match := range matches {
