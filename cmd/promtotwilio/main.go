@@ -25,7 +25,7 @@ func main() {
 	}
 
 	if cfg.AccountSid == "" || cfg.AuthToken == "" || cfg.Sender == "" {
-		slog.Error("'SID', 'TOKEN' and 'SENDER' environment variables need to be set")
+		slog.Error("startup: missing required environment variables (SID, TOKEN, SENDER)")
 		os.Exit(1)
 	}
 
@@ -63,7 +63,7 @@ func main() {
 
 	select {
 	case err := <-serverErr:
-		slog.Error("ListenAndServe failed", "error", err)
+		slog.Error("startup: failed to start HTTP server", "error", err)
 		os.Exit(1)
 	case <-quit:
 		slog.Info("Shutting down server...")
@@ -74,7 +74,7 @@ func main() {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("Server forced to shutdown", "error", err)
+		slog.Error("shutdown: server forced to terminate", "error", err)
 		os.Exit(1)
 	}
 
