@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -13,8 +15,44 @@ import (
 	"github.com/swatto/promtotwilio/internal/handler"
 )
 
+const (
+	// AppName is the name of the application
+	AppName = "promtotwilio"
+	// AppDescription provides a brief description of the application
+	AppDescription = "Prometheus Alertmanager webhook to Twilio SMS bridge"
+)
+
 // Version can be set at build time via ldflags
 var Version = "1.0.0"
+
+// printBanner prints startup information about the application
+func printBanner(port string, cfg *handler.Config) {
+	fmt.Println()
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                      promtotwilio                            ║")
+	fmt.Println("║      Prometheus Alertmanager → Twilio SMS Bridge             ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Printf("  Version:        %s\n", Version)
+	fmt.Printf("  Go version:     %s\n", runtime.Version())
+	fmt.Printf("  OS/Arch:        %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Println()
+	fmt.Println("  Configuration:")
+	fmt.Printf("    • Port:              %s\n", port)
+	fmt.Printf("    • Sender:            %s\n", cfg.Sender)
+	fmt.Printf("    • Receivers:         %d configured\n", len(cfg.Receivers))
+	fmt.Printf("    • Max message len:   %d chars\n", cfg.MaxMessageLength)
+	fmt.Printf("    • Send resolved:     %t\n", cfg.SendResolved)
+	if cfg.MessagePrefix != "" {
+		fmt.Printf("    • Message prefix:    %q\n", cfg.MessagePrefix)
+	}
+	if cfg.TwilioBaseURL != "" {
+		fmt.Printf("    • Twilio base URL:   %s (custom)\n", cfg.TwilioBaseURL)
+	}
+	fmt.Println()
+	fmt.Printf("  Server listening on http://0.0.0.0:%s\n", port)
+	fmt.Println()
+}
 
 func main() {
 	maxMessageLength := 150 // Default
@@ -25,14 +63,14 @@ func main() {
 	}
 
 	cfg := &handler.Config{
-		AccountSid:      os.Getenv("SID"),
-		AuthToken:       os.Getenv("TOKEN"),
-		Receivers:       handler.ParseReceivers(os.Getenv("RECEIVER")),
-		Sender:          os.Getenv("SENDER"),
-		TwilioBaseURL:   os.Getenv("TWILIO_BASE_URL"),
-		SendResolved:    os.Getenv("SEND_RESOLVED") == "true",
+		AccountSid:       os.Getenv("SID"),
+		AuthToken:        os.Getenv("TOKEN"),
+		Receivers:        handler.ParseReceivers(os.Getenv("RECEIVER")),
+		Sender:           os.Getenv("SENDER"),
+		TwilioBaseURL:    os.Getenv("TWILIO_BASE_URL"),
+		SendResolved:     os.Getenv("SEND_RESOLVED") == "true",
 		MaxMessageLength: maxMessageLength,
-		MessagePrefix:   os.Getenv("MESSAGE_PREFIX"),
+		MessagePrefix:    os.Getenv("MESSAGE_PREFIX"),
 	}
 
 	if cfg.AccountSid == "" || cfg.AuthToken == "" || cfg.Sender == "" {
@@ -60,9 +98,12 @@ func main() {
 	// Channel to receive server errors
 	serverErr := make(chan error, 1)
 
+	// Print startup banner
+	printBanner(port, cfg)
+
 	// Start server in a goroutine
 	go func() {
-		slog.Info("Starting server", "port", port, "version", Version)
+		slog.Info("Server started successfully", "app", AppName, "version", Version, "port", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			serverErr <- err
 		}
