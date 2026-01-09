@@ -35,9 +35,7 @@ func NewTwilioClient(accountSid, authToken, baseURL string) *TwilioHTTPClient {
 		accountSid: accountSid,
 		authToken:  authToken,
 		baseURL:    baseURL,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient: &http.Client{},
 	}
 }
 
