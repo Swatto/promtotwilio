@@ -930,3 +930,171 @@ func TestSendRequest_MissingAnnotationsField(t *testing.T) {
 		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
 	}
 }
+
+func TestTruncateMessage_ShortMessage(t *testing.T) {
+	msg := "Short message"
+	result := truncateMessage(msg, 150)
+	if result != msg {
+		t.Errorf("expected %q, got %q", msg, result)
+	}
+}
+
+func TestTruncateMessage_LongMessage(t *testing.T) {
+	msg := "This is a very long message that exceeds the maximum length and should be truncated"
+	result := truncateMessage(msg, 20)
+	expected := "This is a very lo..."
+	if result != expected {
+		t.Errorf("expected %q, got %q", expected, result)
+	}
+	if len(result) != 20 {
+		t.Errorf("expected length 20, got %d", len(result))
+	}
+}
+
+func TestTruncateMessage_ExactLength(t *testing.T) {
+	msg := "Exactly 20 chars!!"
+	result := truncateMessage(msg, 20)
+	if result != msg {
+		t.Errorf("expected %q, got %q", msg, result)
+	}
+}
+
+func TestTruncateMessage_VeryShortMaxLen(t *testing.T) {
+	msg := "This is a long message"
+	result := truncateMessage(msg, 3)
+	if len(result) != 3 {
+		t.Errorf("expected length 3, got %d", len(result))
+	}
+	if result != "Thi" {
+		t.Errorf("expected %q, got %q", "Thi", result)
+	}
+	// Should not have "..." suffix when maxLen <= 3
+	if strings.Contains(result, "...") {
+		t.Errorf("should not have ... suffix when maxLen <= 3, got %q", result)
+	}
+}
+
+func TestTruncateMessage_EmptyMessage(t *testing.T) {
+	msg := ""
+	result := truncateMessage(msg, 150)
+	if result != msg {
+		t.Errorf("expected empty string, got %q", result)
+	}
+}
+
+func TestSendMessage_Truncation(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers:       []string{"+1234567890"},
+		Sender:          "+0987654321",
+		MaxMessageLength: 50,
+	}, mockClient, "test")
+
+	// Create a message that will exceed 50 characters
+	longSummary := "This is a very long summary that will definitely exceed the maximum message length of 50 characters"
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "` + longSummary + `"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if len(call.Body) > 50 {
+		t.Errorf("expected message length <= 50, got %d: %q", len(call.Body), call.Body)
+	}
+	if !strings.HasSuffix(call.Body, "...") {
+		t.Errorf("expected message to end with '...', got %q", call.Body)
+	}
+}
+
+func TestSendMessage_CustomMaxLength(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers:       []string{"+1234567890"},
+		Sender:          "+0987654321",
+		MaxMessageLength: 100,
+	}, mockClient, "test")
+
+	longSummary := "This is a summary that will be truncated at 100 characters"
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "` + longSummary + `"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if len(call.Body) > 100 {
+		t.Errorf("expected message length <= 100, got %d: %q", len(call.Body), call.Body)
+	}
+}
+
+func TestSendMessage_DefaultMaxLength(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+		// MaxMessageLength not set, should default to 150
+	}, mockClient, "test")
+
+	// Create a message that exceeds 150 characters
+	longSummary := strings.Repeat("A", 200)
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "` + longSummary + `"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	// Should default to 150
+	if len(call.Body) > 150 {
+		t.Errorf("expected message length <= 150 (default), got %d: %q", len(call.Body), call.Body)
+	}
+}

@@ -27,12 +27,13 @@ const maxBodySize = 5 << 20
 //
 //nolint:govet // fieldalignment: minor optimization not worth reduced readability
 type Config struct {
-	AccountSid    string
-	AuthToken     string
-	Sender        string
-	Receivers     []string
-	TwilioBaseURL string // Optional: override Twilio API base URL (for testing)
-	SendResolved  bool   // Enable sending notifications for resolved alerts
+	AccountSid       string
+	AuthToken        string
+	Sender           string
+	Receivers        []string
+	TwilioBaseURL    string // Optional: override Twilio API base URL (for testing)
+	SendResolved     bool   // Enable sending notifications for resolved alerts
+	MaxMessageLength int    // Maximum message length before truncation (default: 150)
 }
 
 // Handler handles HTTP requests for the promtotwilio service
@@ -209,6 +210,13 @@ func (h *Handler) sendMessage(receiver string, alert []byte, status string) erro
 		body = "RESOLVED: " + body
 	}
 
+	// Truncate message if it exceeds maximum length
+	maxLen := h.Config.MaxMessageLength
+	if maxLen <= 0 {
+		maxLen = 150 // Default to 150 if not set or invalid
+	}
+	body = truncateMessage(body, maxLen)
+
 	if err := h.Client.SendMessage(receiver, h.Config.Sender, body); err != nil {
 		slog.Error("twilio: failed to send SMS", "receiver", receiver, "error", err)
 		return err
@@ -247,4 +255,16 @@ func FindAndReplaceLabels(body string, alert []byte) string {
 	}
 
 	return body
+}
+
+// truncateMessage truncates a message to the specified maximum length, adding "..." if truncated.
+// If maxLen is <= 3, it truncates without the "..." suffix.
+func truncateMessage(msg string, maxLen int) string {
+	if len(msg) <= maxLen {
+		return msg
+	}
+	if maxLen <= 3 {
+		return msg[:maxLen]
+	}
+	return msg[:maxLen-3] + "..."
 }

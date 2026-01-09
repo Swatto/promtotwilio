@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -16,13 +17,21 @@ import (
 var Version = "1.0.0"
 
 func main() {
+	maxMessageLength := 150 // Default
+	if maxLenStr := os.Getenv("MAX_MESSAGE_LENGTH"); maxLenStr != "" {
+		if parsedLen, err := strconv.Atoi(maxLenStr); err == nil && parsedLen > 0 {
+			maxMessageLength = parsedLen
+		}
+	}
+
 	cfg := &handler.Config{
-		AccountSid:    os.Getenv("SID"),
-		AuthToken:     os.Getenv("TOKEN"),
-		Receivers:     handler.ParseReceivers(os.Getenv("RECEIVER")),
-		Sender:        os.Getenv("SENDER"),
-		TwilioBaseURL: os.Getenv("TWILIO_BASE_URL"),
-		SendResolved:  os.Getenv("SEND_RESOLVED") == "true",
+		AccountSid:      os.Getenv("SID"),
+		AuthToken:       os.Getenv("TOKEN"),
+		Receivers:       handler.ParseReceivers(os.Getenv("RECEIVER")),
+		Sender:          os.Getenv("SENDER"),
+		TwilioBaseURL:   os.Getenv("TWILIO_BASE_URL"),
+		SendResolved:    os.Getenv("SEND_RESOLVED") == "true",
+		MaxMessageLength: maxMessageLength,
 	}
 
 	if cfg.AccountSid == "" || cfg.AuthToken == "" || cfg.Sender == "" {

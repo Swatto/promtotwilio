@@ -12,6 +12,7 @@ It needs 4 environment variables:
 - `SENDER` - Phone number managed by Twilio (full number, formatted with a '+' and country code, e.g., `+15551234567`)
 - `PORT` - Port to listen on (optional, defaults to `9090`)
 - `SEND_RESOLVED` - Enable sending notifications for resolved alerts (optional, defaults to `false`)
+- `MAX_MESSAGE_LENGTH` - Maximum message length before truncation (optional, defaults to `150`). Messages longer than this will be truncated with "..." suffix. Note: SMS messages are typically limited to 160 characters per segment.
 
 ### Multiple Receivers
 
