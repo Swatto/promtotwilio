@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -53,7 +54,7 @@ func (t *TwilioHTTPClient) SendMessage(to, from, body string) error {
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(data.Encode()))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return fmt.Errorf("twilio: failed to create HTTP request: %w", err)
 	}
 
 	req.SetBasicAuth(t.accountSid, t.authToken)
@@ -61,16 +62,20 @@ func (t *TwilioHTTPClient) SendMessage(to, from, body string) error {
 
 	resp, err := t.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("failed to send request: %w", err)
+		return fmt.Errorf("twilio: failed to send HTTP request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if err := resp.Body.Close(); err != nil {
+			slog.Error("twilio: failed to close response body", "error", err)
+		}
+	}()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		respBody, readErr := io.ReadAll(resp.Body)
 		if readErr != nil {
-			return fmt.Errorf("twilio API error (status %d): failed to read response", resp.StatusCode)
+			return fmt.Errorf("twilio: API error (status %d), failed to read error response", resp.StatusCode)
 		}
-		return fmt.Errorf("twilio API error (status %d): %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("twilio: API error (status %d): %s", resp.StatusCode, string(respBody))
 	}
 
 	return nil
