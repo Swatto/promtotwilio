@@ -46,21 +46,28 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Channel to receive server errors
+	serverErr := make(chan error, 1)
+
 	// Start server in a goroutine
 	go func() {
 		slog.Info("Starting server", "port", port, "version", Version)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("ListenAndServe failed", "error", err)
-			os.Exit(1)
+			serverErr <- err
 		}
 	}()
 
-	// Wait for interrupt signal
+	// Wait for interrupt signal or server error
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	slog.Info("Shutting down server...")
+	select {
+	case err := <-serverErr:
+		slog.Error("ListenAndServe failed", "error", err)
+		os.Exit(1)
+	case <-quit:
+		slog.Info("Shutting down server...")
+	}
 
 	// Give outstanding requests 10 seconds to complete
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
