@@ -32,6 +32,7 @@ func main() {
 		TwilioBaseURL:   os.Getenv("TWILIO_BASE_URL"),
 		SendResolved:    os.Getenv("SEND_RESOLVED") == "true",
 		MaxMessageLength: maxMessageLength,
+		MessagePrefix:   os.Getenv("MESSAGE_PREFIX"),
 	}
 
 	if cfg.AccountSid == "" || cfg.AuthToken == "" || cfg.Sender == "" {

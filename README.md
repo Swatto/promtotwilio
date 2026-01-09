@@ -13,6 +13,7 @@ It needs 4 environment variables:
 - `PORT` - Port to listen on (optional, defaults to `9090`)
 - `SEND_RESOLVED` - Enable sending notifications for resolved alerts (optional, defaults to `false`)
 - `MAX_MESSAGE_LENGTH` - Maximum message length before truncation (optional, defaults to `150`). Messages longer than this will be truncated with "..." suffix. Note: SMS messages are typically limited to 160 characters per segment.
+- `MESSAGE_PREFIX` - Custom text to prepend to all messages (optional). Useful for adding environment identifiers, branding, or context to notifications.
 
 ### Multiple Receivers
 
@@ -280,10 +281,19 @@ groups:
 
 Messages are formatted as follows:
 
-- **Firing alerts**: `[AlertName] "Summary text" alert starts at [timestamp]`
-- **Resolved alerts** (when `SEND_RESOLVED=true`): `RESOLVED: [AlertName] "Summary text" alert starts at [timestamp]`
+- **Firing alerts**: `[MESSAGE_PREFIX] [AlertName] "Summary text" alert starts at [timestamp]`
+- **Resolved alerts** (when `SEND_RESOLVED=true`): `[MESSAGE_PREFIX] RESOLVED: [AlertName] "Summary text" alert starts at [timestamp]`
 
-The alert name comes from `labels.alertname` (always present in AlertManager alerts). If the alert name is missing or empty, the message format omits the `[AlertName]` prefix for backward compatibility.
+Where:
+- `[MESSAGE_PREFIX]` - Optional custom prefix (if `MESSAGE_PREFIX` is set)
+- `[AlertName]` - Alert name from `labels.alertname` (always present in AlertManager alerts)
+- `"Summary text"` - Alert summary or description
+- `[timestamp]` - Alert start time (if available)
+
+**Examples:**
+- Without prefix: `[NodeDown] "Server is down" alert starts at Mon, 15 Jan 2024 10:30:00 UTC`
+- With prefix `[PROD]`: `[PROD] [NodeDown] "Server is down" alert starts at Mon, 15 Jan 2024 10:30:00 UTC`
+- Resolved with prefix: `[PROD] RESOLVED: [NodeDown] "Server is back online" alert starts at Mon, 15 Jan 2024 10:30:00 UTC`
 
 ### Resolved Alerts
 

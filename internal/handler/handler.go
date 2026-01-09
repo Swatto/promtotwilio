@@ -34,6 +34,7 @@ type Config struct {
 	TwilioBaseURL    string // Optional: override Twilio API base URL (for testing)
 	SendResolved     bool   // Enable sending notifications for resolved alerts
 	MaxMessageLength int    // Maximum message length before truncation (default: 150)
+	MessagePrefix    string // Custom prefix to prepend to all messages (optional)
 }
 
 // Handler handles HTTP requests for the promtotwilio service
@@ -220,6 +221,11 @@ func (h *Handler) sendMessage(receiver string, alert []byte, status string) erro
 	// Add "RESOLVED: " prefix for resolved alerts
 	if status == "resolved" {
 		body = "RESOLVED: " + body
+	}
+
+	// Add custom message prefix if configured (added last so it appears first in final message)
+	if h.Config.MessagePrefix != "" {
+		body = h.Config.MessagePrefix + " " + body
 	}
 
 	// Truncate message if it exceeds maximum length
