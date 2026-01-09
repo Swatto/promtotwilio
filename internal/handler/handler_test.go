@@ -392,9 +392,157 @@ func TestSendRequest_NotFiring(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	// Should not send any messages for non-firing alerts
+	// Should not send any messages for non-firing alerts when SendResolved is false
 	if mockClient.CallCount() != 0 {
 		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
+func TestSendRequest_ResolvedAlert_Disabled(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers:    []string{"+1234567890"},
+		Sender:       "+0987654321",
+		SendResolved: false,
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "resolved",
+		"alerts": [{
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-01T12:00:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	// Should not send any messages when SendResolved is false
+	if mockClient.CallCount() != 0 {
+		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
+func TestSendRequest_ResolvedAlert_Enabled(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers:    []string{"+1234567890"},
+		Sender:       "+0987654321",
+		SendResolved: true,
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "resolved",
+		"alerts": [{
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	if !resp.Success {
+		t.Errorf("expected success true, got false")
+	}
+	if resp.Sent != 1 {
+		t.Errorf("expected sent 1, got %d", resp.Sent)
+	}
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	// Message should contain "RESOLVED: " prefix
+	call := mockClient.GetCall(0)
+	expectedBody := `RESOLVED: "Test alert" alert starts at Mon, 15 Jan 2024 10:30:00 UTC`
+	if call.Body != expectedBody {
+		t.Errorf("expected body %q, got %q", expectedBody, call.Body)
+	}
+}
+
+func TestSendRequest_MixedStatus(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers:    []string{"+1234567890"},
+		Sender:       "+0987654321",
+		SendResolved: true,
+	}, mockClient, "test")
+
+	// First send a firing alert
+	firingPayload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "Firing alert"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(firingPayload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	// Firing alert should not have RESOLVED prefix
+	call := mockClient.GetCall(0)
+	if strings.Contains(call.Body, "RESOLVED:") {
+		t.Errorf("firing alert should not have RESOLVED prefix, got %q", call.Body)
+	}
+
+	// Now send a resolved alert
+	resolvedPayload := `{
+		"status": "resolved",
+		"alerts": [{
+			"annotations": {"summary": "Resolved alert"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req2 := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(resolvedPayload))
+	req2.Header.Set("Content-Type", "application/json")
+	w2 := httptest.NewRecorder()
+
+	h.SendRequest(w2, req2)
+
+	if w2.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w2.Code)
+	}
+
+	if mockClient.CallCount() != 2 {
+		t.Fatalf("expected 2 calls to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	// Resolved alert should have RESOLVED prefix
+	call2 := mockClient.GetCall(1)
+	if !strings.Contains(call2.Body, "RESOLVED:") {
+		t.Errorf("resolved alert should have RESOLVED prefix, got %q", call2.Body)
 	}
 }
 

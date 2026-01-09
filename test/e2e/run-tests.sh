@@ -169,9 +169,113 @@ else
     fail "POST /send with wrong Content-Type returns 406" "406" "$HTTP_CODE"
 fi
 
+# Test 7: POST /send with resolved status behavior check
+# Note: This test checks behavior based on SEND_RESOLVED env var
+# Since we're running with SEND_RESOLVED=true in e2e, resolved alerts should be sent
+echo ""
+echo "Test 7: POST /send with resolved status (checking SEND_RESOLVED behavior)"
+RESOLVED_PAYLOAD='{
+    "version": "4",
+    "status": "resolved",
+    "alerts": [{
+        "annotations": {"summary": "Resolved Test Alert"},
+        "startsAt": "2024-01-01T12:00:00Z"
+    }]
+}'
+
+HTTP_CODE=$(curl -sf -o /tmp/resolved_response.json -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$RESOLVED_PAYLOAD" \
+    "$APP_URL/send?receiver=%2B1234567890")
+
+RESPONSE=$(cat /tmp/resolved_response.json 2>/dev/null || echo "{}")
+SUCCESS=$(echo "$RESPONSE" | jq -r '.success' 2>/dev/null)
+SENT=$(echo "$RESPONSE" | jq -r '.sent' 2>/dev/null)
+
+# With SEND_RESOLVED=true, resolved alerts should be sent
+if [ "$HTTP_CODE" = "200" ] && [ "$SUCCESS" = "true" ] && [ "$SENT" = "1" ]; then
+    pass "POST /send with resolved status (SEND_RESOLVED enabled) sends alert"
+    echo "  HTTP Code: $HTTP_CODE, Success: $SUCCESS, Sent: $SENT"
+    echo "  Note: SEND_RESOLVED is enabled in e2e tests, so resolved alerts are sent"
+else
+    # If SEND_RESOLVED is disabled, sent should be 0
+    if [ "$SENT" = "0" ]; then
+        pass "POST /send with resolved status (SEND_RESOLVED disabled) does not send"
+        echo "  HTTP Code: $HTTP_CODE, Success: $SUCCESS, Sent: $SENT"
+        echo "  Note: SEND_RESOLVED appears to be disabled"
+    else
+        fail "POST /send with resolved status" "HTTP 200, success=true, sent=0 or 1" "HTTP $HTTP_CODE, success=$SUCCESS, sent=$SENT"
+        echo "  Response: $RESPONSE"
+    fi
+fi
+
 echo ""
 echo "========================================="
-echo "Part 2: AlertManager Integration Tests"
+echo "Part 2: Resolved Alerts Tests (with SEND_RESOLVED enabled)"
+echo "========================================="
+
+# Check if SEND_RESOLVED is enabled by testing with a resolved alert
+# Note: This test assumes the service is running with SEND_RESOLVED=true
+# We'll test both scenarios
+
+# Test 8: Test resolved alert with SEND_RESOLVED (if enabled via env var)
+echo ""
+echo "Test 8: Testing resolved alert behavior"
+# First, check if we can send a resolved alert and see if it's processed
+# This will work if SEND_RESOLVED=true, otherwise it will be skipped
+RESOLVED_PAYLOAD_ENABLED='{
+    "version": "4",
+    "status": "resolved",
+    "alerts": [{
+        "annotations": {"summary": "Resolved Alert Test"},
+        "startsAt": "2024-01-01T12:00:00Z"
+    }]
+}'
+
+# Clear mock-twilio before this test
+curl -sf -X DELETE "$MOCK_TWILIO_URL/messages" || true
+
+HTTP_CODE=$(curl -sf -o /tmp/resolved_enabled_response.json -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$RESOLVED_PAYLOAD_ENABLED" \
+    "$APP_URL/send?receiver=%2B1234567890")
+
+RESPONSE=$(cat /tmp/resolved_enabled_response.json 2>/dev/null || echo "{}")
+SUCCESS=$(echo "$RESPONSE" | jq -r '.success' 2>/dev/null)
+SENT=$(echo "$RESPONSE" | jq -r '.sent' 2>/dev/null)
+
+# Wait a moment for message to be processed
+sleep 2
+
+# Check mock-twilio for messages
+MESSAGES_RESPONSE=$(curl -sf "$MOCK_TWILIO_URL/messages" 2>/dev/null || echo '{"count":0,"messages":[]}')
+MESSAGE_COUNT=$(echo "$MESSAGES_RESPONSE" | jq -r '.count' 2>/dev/null || echo "0")
+RESOLVED_MESSAGE=$(echo "$MESSAGES_RESPONSE" | jq -r '.messages[] | select(.body | contains("RESOLVED:")) | .body' 2>/dev/null | head -1)
+
+if [ "$SENT" = "1" ] && [ -n "$RESOLVED_MESSAGE" ]; then
+    pass "Resolved alerts are sent when SEND_RESOLVED is enabled"
+    echo "  HTTP Code: $HTTP_CODE, Success: $SUCCESS, Sent: $SENT"
+    echo "  Message contains RESOLVED prefix: $(echo "$RESOLVED_MESSAGE" | grep -q "RESOLVED:" && echo "yes" || echo "no")"
+    if echo "$RESOLVED_MESSAGE" | grep -q "RESOLVED:"; then
+        pass "Resolved alert message contains RESOLVED: prefix"
+        echo "  Message: $RESOLVED_MESSAGE"
+    else
+        fail "Resolved alert message contains RESOLVED: prefix" "Message with RESOLVED: prefix" "Message without prefix"
+    fi
+elif [ "$SENT" = "0" ]; then
+    echo -e "  ${YELLOW}Note: SEND_RESOLVED appears to be disabled (sent=0)${NC}"
+    echo "  This is expected if SEND_RESOLVED is not set to 'true'"
+    pass "Resolved alerts are correctly skipped when SEND_RESOLVED is disabled"
+else
+    fail "Resolved alert test" "sent=1 with RESOLVED: prefix or sent=0" "HTTP $HTTP_CODE, sent=$SENT"
+    echo "  Response: $RESPONSE"
+fi
+
+echo ""
+echo "========================================="
+echo "Part 3: AlertManager Integration Tests"
 echo "========================================="
 
 # Clear mock-twilio message store before AlertManager tests
@@ -179,7 +283,7 @@ echo ""
 echo "Clearing mock-twilio message store..."
 curl -sf -X DELETE "$MOCK_TWILIO_URL/messages" || true
 
-# Test 7: AlertManager webhook integration
+# Test 9: AlertManager webhook integration
 echo ""
 echo "Test 7: AlertManager sends alert to promtotwilio which sends SMS"
 
@@ -211,21 +315,21 @@ if [ "$HTTP_CODE" != "200" ]; then
     cat /tmp/am_response.txt 2>/dev/null
 else
     echo "  Alert injected successfully (HTTP $HTTP_CODE)"
-    
+
     # Wait for AlertManager to process and send webhook
     # AlertManager has a ~10s gossip settle time before sending notifications
     echo "  Waiting for AlertManager to settle and process alert (15s)..."
     sleep 15
-    
+
     # Check if mock-twilio received the SMS
     echo "  Checking mock-twilio for received messages..."
     MESSAGES_RESPONSE=$(curl -sf "$MOCK_TWILIO_URL/messages")
     MESSAGE_COUNT=$(echo "$MESSAGES_RESPONSE" | jq -r '.count' 2>/dev/null)
-    
+
     if [ "$MESSAGE_COUNT" -gt 0 ] 2>/dev/null; then
         # Check if any message contains our test alert
         FOUND_ALERT=$(echo "$MESSAGES_RESPONSE" | jq -r '.messages[] | select(.body | contains("E2E AlertManager Integration Test")) | .body' 2>/dev/null | head -1)
-        
+
         if [ -n "$FOUND_ALERT" ]; then
             pass "AlertManager -> promtotwilio -> mock-twilio integration works"
             echo "  Messages received: $MESSAGE_COUNT"

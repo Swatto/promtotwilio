@@ -22,6 +22,7 @@ func main() {
 		Receivers:     handler.ParseReceivers(os.Getenv("RECEIVER")),
 		Sender:        os.Getenv("SENDER"),
 		TwilioBaseURL: os.Getenv("TWILIO_BASE_URL"),
+		SendResolved:  os.Getenv("SEND_RESOLVED") == "true",
 	}
 
 	if cfg.AccountSid == "" || cfg.AuthToken == "" || cfg.Sender == "" {

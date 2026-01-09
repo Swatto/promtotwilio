@@ -32,6 +32,7 @@ type Config struct {
 	Sender        string
 	Receivers     []string
 	TwilioBaseURL string // Optional: override Twilio API base URL (for testing)
+	SendResolved  bool   // Enable sending notifications for resolved alerts
 }
 
 // Handler handles HTTP requests for the promtotwilio service
@@ -133,7 +134,10 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		Errors:  []string{},
 	}
 
-	if status == "firing" {
+	// Process alerts if status is "firing" or if status is "resolved" and SendResolved is enabled
+	shouldProcess := status == "firing" || (status == "resolved" && h.Config.SendResolved)
+
+	if shouldProcess {
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var sendErrors []string
@@ -148,7 +152,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 				copy(alertCopy, alert)
 				go func(rcv string, alertData []byte) {
 					defer wg.Done()
-					sendErr := h.sendMessage(rcv, alertData)
+					sendErr := h.sendMessage(rcv, alertData, status)
 					mu.Lock()
 					defer mu.Unlock()
 					if sendErr != nil {
@@ -184,7 +188,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) sendMessage(receiver string, alert []byte) error {
+func (h *Handler) sendMessage(receiver string, alert []byte, status string) error {
 	body, err := jsonparser.GetString(alert, "annotations", "summary")
 	if err != nil || body == "" {
 		slog.Error("send: alert missing summary annotation")
@@ -198,6 +202,11 @@ func (h *Handler) sendMessage(receiver string, alert []byte) error {
 		if parsedStartsAt, err := time.Parse(time.RFC3339, startsAt); err == nil {
 			body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
 		}
+	}
+
+	// Add "RESOLVED: " prefix for resolved alerts
+	if status == "resolved" {
+		body = "RESOLVED: " + body
 	}
 
 	if err := h.Client.SendMessage(receiver, h.Config.Sender, body); err != nil {

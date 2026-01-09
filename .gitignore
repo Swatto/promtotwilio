@@ -23,3 +23,6 @@ Thumbs.db
 
 # Go
 vendor/
+
+# Build plans
+build-plan/

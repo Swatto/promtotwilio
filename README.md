@@ -11,6 +11,7 @@ It needs 4 environment variables:
 - `RECEIVER` - Phone number(s) of receiver (optional, supports comma-separated list for multiple receivers)
 - `SENDER` - Phone number managed by Twilio (full number, formatted with a '+' and country code, e.g., `+15551234567`)
 - `PORT` - Port to listen on (optional, defaults to `9090`)
+- `SEND_RESOLVED` - Enable sending notifications for resolved alerts (optional, defaults to `false`)
 
 ### Multiple Receivers
 
@@ -205,6 +206,7 @@ sms:
     RECEIVER: "+1234567890,+0987654321"
     SENDER: xxx
     PORT: 9090
+    SEND_RESOLVED: "true"  # Optional: enable resolved alert notifications
 
 alert:
   image: prom/alertmanager:latest
@@ -272,6 +274,15 @@ groups:
 ```
 
 **Note:** The `summary` annotation is **required**. Alerts without a `summary` annotation will fail with a "missing summary annotation" error.
+
+### Resolved Alerts
+
+By default, only alerts with status "firing" are sent. To also receive notifications when alerts are resolved, set the `SEND_RESOLVED` environment variable to `"true"`. Resolved alerts will be prefixed with "RESOLVED: " in the message.
+
+Example resolved alert message:
+```
+RESOLVED: "Server is back online" alert starts at Mon, 15 Jan 2024 10:30:00 UTC
+```
 
 ## License
 
