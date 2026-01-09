@@ -488,21 +488,12 @@ func TestSendRequest_BodySizeLimitEnforced(t *testing.T) {
 
 	h.SendRequest(w, req)
 
-	// The request should succeed (200 OK) but with 0 messages sent
-	// because the truncated body is invalid JSON
-	if w.Code != http.StatusOK {
-		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
-	}
-
-	var resp SendResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("failed to decode response: %v", err)
+	// The truncated body is invalid JSON, so we return 400 Bad Request
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, w.Code)
 	}
 
 	// No messages should be sent since the JSON is invalid/truncated
-	if resp.Sent != 0 {
-		t.Errorf("expected sent 0, got %d", resp.Sent)
-	}
 	if mockClient.CallCount() != 0 {
 		t.Errorf("expected 0 calls to SendMessage, got %d", mockClient.CallCount())
 	}

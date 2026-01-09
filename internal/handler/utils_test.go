@@ -60,23 +60,21 @@ func TestParseReceivers(t *testing.T) {
 }
 
 func TestFindAndReplaceLabels(t *testing.T) {
-	alert := []byte(`
-      {
-        "status": "firing",
-        "labels": {
-          "alertname": "InstanceDown",
-          "instance": "http://test.com",
-          "job": "blackbox"
-        },
-        "annotations": {
-          "description": "Unable to scrape $labels.instance",
-          "summary": "Address $labels.instance appears to be down"
-        },
-        "startsAt": "2017-01-06T19:34:52.887Z",
-        "endsAt": "0001-01-01T00:00:00Z",
-        "generatorURL": "http://test.com/graph?g0.expr=probe_success%7Bjob%3D%22blackbox%22%7D+%3D%3D+0&g0.tab=0"
-      }
-    `)
+	alert := &Alert{
+		Status: "firing",
+		Labels: map[string]string{
+			"alertname": "InstanceDown",
+			"instance":  "http://test.com",
+			"job":       "blackbox",
+		},
+		Annotations: map[string]string{
+			"description": "Unable to scrape $labels.instance",
+			"summary":     "Address $labels.instance appears to be down",
+		},
+		StartsAt:     "2017-01-06T19:34:52.887Z",
+		EndsAt:       "0001-01-01T00:00:00Z",
+		GeneratorURL: "http://test.com/graph?g0.expr=probe_success%7Bjob%3D%22blackbox%22%7D+%3D%3D+0&g0.tab=0",
+	}
 
 	input := "Address $labels.instance appears to be down with $labels.alertname"
 	expected := "Address http://test.com appears to be down with InstanceDown"

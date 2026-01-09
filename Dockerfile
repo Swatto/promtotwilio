@@ -7,9 +7,8 @@ RUN mkdir /user && \
 WORKDIR /src
 RUN apk add --update --no-cache ca-certificates
 
-COPY ./go.mod ./go.sum ./
-RUN --mount=type=cache,target=/go/pkg/mod \
-    go mod download
+COPY ./go.mod ./
+# go.sum is not present when there are no external dependencies
 
 COPY ./ ./
 

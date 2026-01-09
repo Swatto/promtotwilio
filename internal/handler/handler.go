@@ -9,8 +9,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/buger/jsonparser"
 )
 
 // maxBodySize is the maximum allowed request body size (5 MB).
@@ -112,7 +110,14 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	status, _ := jsonparser.GetString(body, "status") //nolint:errcheck // status is optional
+	var payload AlertManagerPayload
+	if err := json.Unmarshal(body, &payload); err != nil {
+		slog.Error("send: failed to parse JSON", "error", err)
+		http.Error(w, "send: invalid JSON in request body", http.StatusBadRequest)
+		return
+	}
+
+	status := payload.Status
 
 	// Determine receivers: query param overrides default
 	receivers := h.Config.Receivers
@@ -140,16 +145,13 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		var sendErrors []string
 		var sent, failed int
 
-		_, err := jsonparser.ArrayEach(body, func(alert []byte, dataType jsonparser.ValueType, offset int, err error) {
+		for i := range payload.Alerts {
+			alert := &payload.Alerts[i]
 			for _, receiver := range receivers {
 				wg.Add(1)
-				// Copy alert data to avoid race condition when passing to goroutine
-				// This ensures each goroutine has its own independent copy of the alert data
-				alertCopy := make([]byte, len(alert))
-				copy(alertCopy, alert)
-				go func(rcv string, alertData []byte) {
+				go func(rcv string, a *Alert) {
 					defer wg.Done()
-					sendErr := h.sendMessage(rcv, alertData, status)
+					sendErr := h.sendMessage(rcv, a, status)
 					mu.Lock()
 					defer mu.Unlock()
 					if sendErr != nil {
@@ -158,14 +160,8 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 					} else {
 						sent++
 					}
-				}(receiver, alertCopy)
+				}(receiver, alert)
 			}
-		}, "alerts")
-
-		if err != nil {
-			slog.Error("send: failed to parse alerts array", "error", err)
-			http.Error(w, "send: invalid alerts format in request body", http.StatusBadRequest)
-			return
 		}
 
 		wg.Wait()
@@ -185,7 +181,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) sendMessage(receiver string, alert []byte, status string) error {
+func (h *Handler) sendMessage(receiver string, alert *Alert, status string) error {
 	body, err := FormatMessage(alert, status, h.Config)
 	if err != nil {
 		return err

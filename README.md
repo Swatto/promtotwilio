@@ -5,6 +5,8 @@
 
 **Send Prometheus alerts as SMS via Twilio.** Get notified on your phone when things go wrong.
 
+**Zero external dependencies** — built entirely with Go's standard library for maximum reliability and minimal attack surface.
+
 ```
 ┌────────────┐     ┌──────────────┐     ┌──────────────┐     ┌────────┐     ┌───────┐
 │ Prometheus │────▶│ AlertManager │────▶│ promtotwilio │────▶│ Twilio │────▶│  SMS  │
@@ -181,6 +183,15 @@ groups:
 ---
 
 ## Development
+
+### Zero Dependencies
+
+This project uses **only Go's standard library** — no external dependencies. This means:
+
+- **Minimal attack surface** — no third-party supply chain risks
+- **Fast builds** — no dependency downloads required
+- **Maximum reliability** — only battle-tested stdlib code
+- **Tiny binary** — ~5MB statically compiled
 
 ### Prerequisites
 

@@ -3,8 +3,6 @@ package handler
 import (
 	"regexp"
 	"strings"
-
-	"github.com/buger/jsonparser"
 )
 
 // labelReg matches $labels.xxx placeholders in alert messages.
@@ -28,13 +26,14 @@ func ParseReceivers(receivers string) []string {
 }
 
 // FindAndReplaceLabels replaces $labels.xxx placeholders with actual label values
-func FindAndReplaceLabels(body string, alert []byte) string {
+func FindAndReplaceLabels(body string, alert *Alert) string {
 	matches := labelReg.FindAllString(body, -1)
 
 	for _, match := range matches {
 		labelName := strings.Split(match, ".")
 		if len(labelName) == 2 {
-			replaceWith, _ := jsonparser.GetString(alert, "labels", labelName[1]) //nolint:errcheck // missing label replaced with empty string
+			// GetLabel returns empty string if label doesn't exist (user-defined labels are not guaranteed)
+			replaceWith := alert.GetLabel(labelName[1])
 			body = strings.ReplaceAll(body, match, replaceWith)
 		}
 	}

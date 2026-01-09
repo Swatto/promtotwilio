@@ -5,21 +5,19 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/buger/jsonparser"
 )
 
 // FormatMessage formats an alert into a message string ready to be sent via SMS.
 // It extracts the summary/description, replaces label placeholders, adds timestamps,
 // alert names, resolved prefixes, and custom prefixes, then truncates if needed.
-func FormatMessage(alert []byte, status string, config *Config) (string, error) {
-	// Try to get summary first
-	body, err := jsonparser.GetString(alert, "annotations", "summary")
+func FormatMessage(alert *Alert, status string, config *Config) (string, error) {
+	// Try to get summary first (user-defined annotation, may not exist)
+	body := alert.GetAnnotation("summary")
 
 	// If summary is missing or empty (including whitespace-only), try description as fallback
-	if err != nil || strings.TrimSpace(body) == "" {
-		body, err = jsonparser.GetString(alert, "annotations", "description")
-		if err != nil || strings.TrimSpace(body) == "" {
+	if strings.TrimSpace(body) == "" {
+		body = alert.GetAnnotation("description")
+		if strings.TrimSpace(body) == "" {
 			slog.Error("send: alert missing summary and description annotations")
 			return "", fmt.Errorf("alert missing summary and description annotations")
 		}
@@ -27,15 +25,15 @@ func FormatMessage(alert []byte, status string, config *Config) (string, error) 
 
 	body = FindAndReplaceLabels(body, alert)
 
-	// startsAt is optional - only include timestamp if present and valid
-	if startsAt, err := jsonparser.GetString(alert, "startsAt"); err == nil {
-		if parsedStartsAt, err := time.Parse(time.RFC3339, startsAt); err == nil {
+	// startsAt is guaranteed but only include timestamp if valid RFC3339 format
+	if alert.StartsAt != "" {
+		if parsedStartsAt, err := time.Parse(time.RFC3339, alert.StartsAt); err == nil {
 			body = "\"" + body + "\"" + " alert starts at " + parsedStartsAt.Format(time.RFC1123)
 		}
 	}
 
 	// Extract alert name from labels.alertname (always present per AlertManager spec, but handle gracefully)
-	alertName, _ := jsonparser.GetString(alert, "labels", "alertname")
+	alertName := alert.GetLabel("alertname")
 	if strings.TrimSpace(alertName) != "" {
 		body = "[" + alertName + "] " + body
 	}
