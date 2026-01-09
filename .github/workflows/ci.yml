@@ -151,13 +151,34 @@ jobs:
           GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w -X main.Version=${VERSION}" \
             -o dist/promtotwilio-darwin-arm64 ./cmd/promtotwilio
 
+      - name: Generate release notes
+        id: release-notes
+        run: |
+          # Find the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "Generating notes from $PREV_TAG to ${{ inputs.version }}"
+            NOTES=$(git log --pretty=format:"- %s (%h)" "$PREV_TAG"..HEAD)
+          else
+            echo "No previous tag found, using all commits"
+            NOTES=$(git log --pretty=format:"- %s (%h)" -20)
+          fi
+
+          # Write notes to file
+          {
+            echo "## What's Changed"
+            echo ""
+            echo "$NOTES"
+          } > release-notes.md
+
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release create "${{ inputs.version }}" \
             --title "Release ${{ inputs.version }}" \
-            --generate-notes \
+            --notes-file release-notes.md \
             dist/promtotwilio-linux-amd64 \
             dist/promtotwilio-linux-arm64 \
             dist/promtotwilio-darwin-amd64 \
