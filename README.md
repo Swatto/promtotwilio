@@ -9,7 +9,7 @@ It needs 4 environment variables:
 - `SID` - Twilio Account SID
 - `TOKEN` - Twilio Auth Token
 - `RECEIVER` - Phone number(s) of receiver (optional, supports comma-separated list for multiple receivers)
-- `SENDER` - Phone number managed by Twilio (friendly name)
+- `SENDER` - Phone number managed by Twilio (full number, formatted with a '+' and country code, e.g., `+15551234567`)
 - `PORT` - Port to listen on (optional, defaults to `9090`)
 
 ### Multiple Receivers
@@ -253,6 +253,25 @@ receivers:
   webhook_configs:
   - url: 'http://sms:9090/send'
 ```
+
+### Example Prometheus Alert Rule
+
+The alert message is taken from the `summary` annotation field. Here's an example alert rule:
+
+```yml
+groups:
+- name: example
+  rules:
+  - alert: NodeDown
+    expr: up == 0
+    for: 1m
+    labels:
+      severity: critical
+    annotations:
+      summary: '{{ $labels.instance }} is down'
+```
+
+**Note:** The `summary` annotation is **required**. Alerts without a `summary` annotation will fail with a "missing summary annotation" error.
 
 ## License
 
