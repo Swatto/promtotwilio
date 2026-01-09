@@ -72,7 +72,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 // Ping handles the ping endpoint
 func (h *Handler) Ping(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprint(w, "ping")
+	if _, err := io.WriteString(w, "ping"); err != nil {
+		slog.Error("Failed to write ping response", "error", err)
+	}
 }
 
 // Health handles the health check endpoint
