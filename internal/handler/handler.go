@@ -92,7 +92,9 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 // SendRequest handles the send SMS endpoint
 func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	contentType := r.Header.Get("Content-Type")
-	if contentType != "application/json" {
+	// Handle Content-Type case-insensitively and allow charset parameters
+	// e.g., "application/json", "Application/JSON", "application/json; charset=utf-8"
+	if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
 		http.Error(w, "Content-Type must be application/json", http.StatusNotAcceptable)
 		return
 	}

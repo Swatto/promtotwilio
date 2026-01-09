@@ -101,6 +101,68 @@ func TestSendRequest_InvalidContentType(t *testing.T) {
 	}
 }
 
+func TestSendRequest_ContentTypeWithCharset(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-01T12:00:00Z"
+		}]
+	}`
+
+	// Test with charset parameter
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Errorf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
+func TestSendRequest_ContentTypeCaseInsensitive(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-01T12:00:00Z"
+		}]
+	}`
+
+	// Test with uppercase Content-Type
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "Application/JSON")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Errorf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+}
+
 func TestSendRequest_NoReceiver(t *testing.T) {
 	h := NewWithClient(&Config{Sender: "+0987654321"}, &MockTwilioClient{}, "test")
 
