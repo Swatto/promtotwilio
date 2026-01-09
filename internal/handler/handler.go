@@ -211,6 +211,12 @@ func (h *Handler) sendMessage(receiver string, alert []byte, status string) erro
 		}
 	}
 
+	// Extract alert name from labels.alertname (always present per AlertManager spec, but handle gracefully)
+	alertName, _ := jsonparser.GetString(alert, "labels", "alertname")
+	if strings.TrimSpace(alertName) != "" {
+		body = "[" + alertName + "] " + body
+	}
+
 	// Add "RESOLVED: " prefix for resolved alerts
 	if status == "resolved" {
 		body = "RESOLVED: " + body

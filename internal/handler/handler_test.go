@@ -1338,3 +1338,198 @@ func TestSendMessage_WhitespaceOnlySummaryUsesDescription(t *testing.T) {
 		t.Errorf("expected message to contain 'Test description' (fallback for whitespace-only summary), got %q", call.Body)
 	}
 }
+
+func TestSendMessage_WithAlertName(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"labels": {"alertname": "NodeDown"},
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	if !strings.HasPrefix(call.Body, "[NodeDown]") {
+		t.Errorf("expected message to start with '[NodeDown]', got %q", call.Body)
+	}
+	if !strings.Contains(call.Body, "Test alert") {
+		t.Errorf("expected message to contain 'Test alert', got %q", call.Body)
+	}
+}
+
+func TestSendMessage_WithoutAlertName(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"labels": {},
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	// Should not start with [ (no alert name prefix)
+	if strings.HasPrefix(call.Body, "[") {
+		t.Errorf("expected message to not start with '[', got %q", call.Body)
+	}
+	if !strings.Contains(call.Body, "Test alert") {
+		t.Errorf("expected message to contain 'Test alert', got %q", call.Body)
+	}
+}
+
+func TestSendMessage_EmptyAlertName(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"labels": {"alertname": ""},
+			"annotations": {"summary": "Test alert"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	// Should not start with [ (empty alert name is skipped)
+	if strings.HasPrefix(call.Body, "[") {
+		t.Errorf("expected message to not start with '[' (empty alertname), got %q", call.Body)
+	}
+}
+
+func TestSendMessage_AlertNameFormat(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "firing",
+		"alerts": [{
+			"labels": {"alertname": "HighCPUUsage"},
+			"annotations": {"summary": "CPU is high"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	expectedPrefix := "[HighCPUUsage]"
+	if !strings.HasPrefix(call.Body, expectedPrefix) {
+		t.Errorf("expected message to start with %q, got %q", expectedPrefix, call.Body)
+	}
+	// Verify format: [AlertName] "summary" alert starts at...
+	if !strings.Contains(call.Body, `"CPU is high"`) {
+		t.Errorf("expected message to contain quoted summary, got %q", call.Body)
+	}
+}
+
+func TestSendMessage_AlertNameWithResolved(t *testing.T) {
+	mockClient := &MockTwilioClient{}
+	h := NewWithClient(&Config{
+		Receivers:    []string{"+1234567890"},
+		Sender:       "+0987654321",
+		SendResolved: true,
+	}, mockClient, "test")
+
+	payload := `{
+		"status": "resolved",
+		"alerts": [{
+			"labels": {"alertname": "NodeDown"},
+			"annotations": {"summary": "Node is back online"},
+			"startsAt": "2024-01-15T10:30:00Z"
+		}]
+	}`
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(payload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, w.Code)
+	}
+
+	if mockClient.CallCount() != 1 {
+		t.Fatalf("expected 1 call to SendMessage, got %d", mockClient.CallCount())
+	}
+
+	call := mockClient.GetCall(0)
+	// Should be: RESOLVED: [NodeDown] "Node is back online" alert starts at...
+	if !strings.HasPrefix(call.Body, "RESOLVED: [NodeDown]") {
+		t.Errorf("expected message to start with 'RESOLVED: [NodeDown]', got %q", call.Body)
+	}
+}

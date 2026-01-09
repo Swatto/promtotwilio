@@ -259,7 +259,7 @@ receivers:
 
 ### Example Prometheus Alert Rule
 
-The alert message is taken from the `summary` annotation field. Here's an example alert rule:
+The alert message is taken from the `summary` annotation field (or `description` as fallback). The alert name from `labels.alertname` is automatically included in the message. Here's an example alert rule:
 
 ```yml
 groups:
@@ -275,6 +275,15 @@ groups:
 ```
 
 **Note:** Either the `summary` or `description` annotation is **required**. If `summary` is missing or empty, `description` will be used as a fallback. Alerts without both annotations will fail with a "missing summary and description annotations" error.
+
+### Message Format
+
+Messages are formatted as follows:
+
+- **Firing alerts**: `[AlertName] "Summary text" alert starts at [timestamp]`
+- **Resolved alerts** (when `SEND_RESOLVED=true`): `RESOLVED: [AlertName] "Summary text" alert starts at [timestamp]`
+
+The alert name comes from `labels.alertname` (always present in AlertManager alerts). If the alert name is missing or empty, the message format omits the `[AlertName]` prefix for backward compatibility.
 
 ### Resolved Alerts
 
