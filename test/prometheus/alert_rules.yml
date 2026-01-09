@@ -1,0 +1,12 @@
+groups:
+  - name: e2e_test_alerts
+    rules:
+      - alert: TestAlertFiring
+        expr: test_alert_trigger == 1
+        for: 5s
+        labels:
+          severity: critical
+          instance: mock-exporter:9100
+        annotations:
+          summary: "E2E Test Alert from Prometheus"
+          description: "This alert was triggered by the E2E test suite to verify the full alert pipeline."

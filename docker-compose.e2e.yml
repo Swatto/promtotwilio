@@ -4,6 +4,11 @@ services:
       context: ./test/mock-twilio
       dockerfile: Dockerfile
 
+  mock-exporter:
+    build:
+      context: ./test/mock-exporter
+      dockerfile: Dockerfile
+
   promtotwilio:
     build:
       context: .
@@ -14,7 +19,7 @@ services:
       SENDER: "+15551234567"
       PORT: "9090"
       TWILIO_BASE_URL: "http://mock-twilio:8080"
-      SEND_RESOLVED: "true"  # Enable resolved alerts for e2e tests
+      SEND_RESOLVED: "true"
     depends_on:
       - mock-twilio
 
@@ -28,6 +33,17 @@ services:
     depends_on:
       - promtotwilio
 
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    volumes:
+      - ./test/prometheus:/etc/prometheus:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--log.level=debug'
+    depends_on:
+      - mock-exporter
+      - alertmanager
+
   e2e-tests:
     build:
       context: ./test/e2e
@@ -36,6 +52,9 @@ services:
       APP_URL: "http://promtotwilio:9090"
       ALERTMANAGER_URL: "http://alertmanager:9093"
       MOCK_TWILIO_URL: "http://mock-twilio:8080"
+      MOCK_EXPORTER_URL: "http://mock-exporter:9100"
+      PROMETHEUS_URL: "http://prometheus:9090"
     depends_on:
       - promtotwilio
       - alertmanager
+      - prometheus

@@ -4,6 +4,8 @@ set -e
 APP_URL="${APP_URL:-http://promtotwilio:9090}"
 ALERTMANAGER_URL="${ALERTMANAGER_URL:-http://alertmanager:9093}"
 MOCK_TWILIO_URL="${MOCK_TWILIO_URL:-http://mock-twilio:8080}"
+MOCK_EXPORTER_URL="${MOCK_EXPORTER_URL:-http://mock-exporter:9100}"
+PROMETHEUS_URL="${PROMETHEUS_URL:-http://prometheus:9090}"
 MAX_RETRIES=30
 RETRY_INTERVAL=1
 
@@ -13,6 +15,8 @@ echo "========================================="
 echo "App URL: $APP_URL"
 echo "AlertManager URL: $ALERTMANAGER_URL"
 echo "Mock Twilio URL: $MOCK_TWILIO_URL"
+echo "Mock Exporter URL: $MOCK_EXPORTER_URL"
+echo "Prometheus URL: $PROMETHEUS_URL"
 echo ""
 
 # Color codes for output
@@ -58,6 +62,8 @@ wait_for_service() {
 wait_for_service "$APP_URL/" "promtotwilio" || exit 1
 wait_for_service "$ALERTMANAGER_URL/-/healthy" "AlertManager" || exit 1
 wait_for_service "$MOCK_TWILIO_URL/health" "Mock Twilio" || exit 1
+wait_for_service "$MOCK_EXPORTER_URL/health" "Mock Exporter" || exit 1
+wait_for_service "$PROMETHEUS_URL/-/ready" "Prometheus" || exit 1
 
 echo ""
 echo "========================================="
@@ -345,6 +351,148 @@ else
         fail "AlertManager -> promtotwilio -> mock-twilio integration" "At least 1 message" "0 messages"
         echo "  Response: $MESSAGES_RESPONSE"
     fi
+fi
+
+echo ""
+echo "========================================="
+echo "Part 4: Full Prometheus Alert Cycle Tests"
+echo "========================================="
+
+# Clear mock-twilio message store before Prometheus cycle tests
+echo ""
+echo "Clearing mock-twilio message store..."
+curl -sf -X DELETE "$MOCK_TWILIO_URL/messages" || true
+
+# Reset mock-exporter to healthy state
+echo "Resetting mock-exporter to healthy state (alert_trigger=0)..."
+curl -sf -X POST -H "Content-Type: application/json" \
+    -d '{"alert_trigger": 0}' \
+    "$MOCK_EXPORTER_URL/control" > /dev/null
+
+# Give Prometheus time to scrape the healthy state
+echo "Waiting for Prometheus to scrape healthy state (10s)..."
+sleep 10
+
+# Test 10: Full Prometheus alert cycle - Trigger firing alert
+echo ""
+echo "Test 10: Full Prometheus alert cycle - Triggering firing alert"
+
+# Set mock-exporter to unhealthy state to trigger alert
+echo "  Setting mock-exporter to unhealthy state (alert_trigger=1)..."
+CONTROL_RESPONSE=$(curl -sf -X POST -H "Content-Type: application/json" \
+    -d '{"alert_trigger": 1}' \
+    "$MOCK_EXPORTER_URL/control")
+
+ALERT_TRIGGER=$(echo "$CONTROL_RESPONSE" | jq -r '.alert_trigger' 2>/dev/null)
+if [ "$ALERT_TRIGGER" = "1" ]; then
+    echo "  Mock exporter set to unhealthy state"
+else
+    fail "Set mock-exporter to unhealthy" "alert_trigger=1" "alert_trigger=$ALERT_TRIGGER"
+fi
+
+# Wait for:
+# - Prometheus to scrape (5s interval)
+# - Alert rule evaluation (for: 5s)
+# - AlertManager to receive and process
+# - promtotwilio to send SMS
+echo "  Waiting for Prometheus to detect unhealthy state and fire alert (25s)..."
+sleep 25
+
+# Check if mock-twilio received the firing alert SMS
+echo "  Checking mock-twilio for firing alert message..."
+MESSAGES_RESPONSE=$(curl -sf "$MOCK_TWILIO_URL/messages")
+MESSAGE_COUNT=$(echo "$MESSAGES_RESPONSE" | jq -r '.count' 2>/dev/null)
+
+FIRING_MESSAGE=$(echo "$MESSAGES_RESPONSE" | jq -r '.messages[] | select(.body | contains("E2E Test Alert from Prometheus")) | .body' 2>/dev/null | head -1)
+
+if [ -n "$FIRING_MESSAGE" ]; then
+    pass "Prometheus -> AlertManager -> promtotwilio -> SMS (firing alert)"
+    echo "  Message count: $MESSAGE_COUNT"
+    echo "  Firing alert message: $FIRING_MESSAGE"
+else
+    fail "Prometheus firing alert received" "Message containing 'E2E Test Alert from Prometheus'" "No matching message"
+    echo "  Messages received: $MESSAGE_COUNT"
+    if [ "$MESSAGE_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "  Messages in store:"
+        echo "$MESSAGES_RESPONSE" | jq -r '.messages[].body' 2>/dev/null | head -5
+    fi
+fi
+
+# Test 11: Full Prometheus alert cycle - Resolve alert
+echo ""
+echo "Test 11: Full Prometheus alert cycle - Resolving alert"
+
+# Clear mock-twilio before resolved test
+curl -sf -X DELETE "$MOCK_TWILIO_URL/messages" || true
+
+# Set mock-exporter back to healthy state to resolve alert
+echo "  Setting mock-exporter to healthy state (alert_trigger=0)..."
+CONTROL_RESPONSE=$(curl -sf -X POST -H "Content-Type: application/json" \
+    -d '{"alert_trigger": 0}' \
+    "$MOCK_EXPORTER_URL/control")
+
+ALERT_TRIGGER=$(echo "$CONTROL_RESPONSE" | jq -r '.alert_trigger' 2>/dev/null)
+if [ "$ALERT_TRIGGER" = "0" ]; then
+    echo "  Mock exporter set to healthy state"
+else
+    fail "Set mock-exporter to healthy" "alert_trigger=0" "alert_trigger=$ALERT_TRIGGER"
+fi
+
+# Wait for:
+# - Prometheus to scrape healthy state
+# - Alert to resolve
+# - AlertManager to send resolved notification
+echo "  Waiting for Prometheus to detect healthy state and resolve alert (20s)..."
+sleep 20
+
+# Check if mock-twilio received the resolved alert SMS
+echo "  Checking mock-twilio for resolved alert message..."
+MESSAGES_RESPONSE=$(curl -sf "$MOCK_TWILIO_URL/messages")
+MESSAGE_COUNT=$(echo "$MESSAGES_RESPONSE" | jq -r '.count' 2>/dev/null)
+
+RESOLVED_MESSAGE=$(echo "$MESSAGES_RESPONSE" | jq -r '.messages[] | select(.body | contains("RESOLVED:")) | .body' 2>/dev/null | head -1)
+
+if [ -n "$RESOLVED_MESSAGE" ]; then
+    pass "Prometheus -> AlertManager -> promtotwilio -> SMS (resolved alert)"
+    echo "  Message count: $MESSAGE_COUNT"
+    echo "  Resolved alert message: $RESOLVED_MESSAGE"
+else
+    # Resolved alerts might not be sent depending on configuration
+    echo -e "  ${YELLOW}Note: Resolved alert message not found${NC}"
+    echo "  This may be expected if send_resolved is not enabled in AlertManager"
+    if [ "$MESSAGE_COUNT" -gt 0 ] 2>/dev/null; then
+        echo "  Messages in store:"
+        echo "$MESSAGES_RESPONSE" | jq -r '.messages[].body' 2>/dev/null | head -5
+        fail "Resolved alert message" "Message containing 'RESOLVED:'" "Other messages"
+    else
+        fail "Resolved alert message" "At least 1 message" "0 messages"
+    fi
+fi
+
+# Test 12: Verify Prometheus metrics endpoint is working
+echo ""
+echo "Test 12: Verify mock-exporter /metrics endpoint"
+METRICS_RESPONSE=$(curl -sf "$MOCK_EXPORTER_URL/metrics")
+if echo "$METRICS_RESPONSE" | grep -q "test_alert_trigger"; then
+    pass "Mock exporter /metrics endpoint returns test_alert_trigger metric"
+    echo "  Metric found: $(echo "$METRICS_RESPONSE" | grep 'test_alert_trigger ' | head -1)"
+else
+    fail "Mock exporter /metrics" "Contains test_alert_trigger" "Metric not found"
+fi
+
+# Test 13: Verify Prometheus has scraped the mock-exporter
+echo ""
+echo "Test 13: Verify Prometheus has scraped mock-exporter"
+PROM_QUERY_RESPONSE=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=test_alert_trigger")
+PROM_STATUS=$(echo "$PROM_QUERY_RESPONSE" | jq -r '.status' 2>/dev/null)
+PROM_RESULT_COUNT=$(echo "$PROM_QUERY_RESPONSE" | jq -r '.data.result | length' 2>/dev/null)
+
+if [ "$PROM_STATUS" = "success" ] && [ "$PROM_RESULT_COUNT" -gt 0 ] 2>/dev/null; then
+    pass "Prometheus has scraped mock-exporter and has test_alert_trigger metric"
+    METRIC_VALUE=$(echo "$PROM_QUERY_RESPONSE" | jq -r '.data.result[0].value[1]' 2>/dev/null)
+    echo "  Metric value: $METRIC_VALUE"
+else
+    fail "Prometheus scrape" "status=success, results > 0" "status=$PROM_STATUS, results=$PROM_RESULT_COUNT"
 fi
 
 # Summary

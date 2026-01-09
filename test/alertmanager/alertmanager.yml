@@ -11,4 +11,4 @@ receivers:
   - name: 'sms'
     webhook_configs:
       - url: 'http://promtotwilio:9090/send?receiver=%2B1234567890'
-        send_resolved: false
+        send_resolved: true
