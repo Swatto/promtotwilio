@@ -112,25 +112,61 @@ make dev
 
 ## Releasing
 
-### Create a Release
+### Automated Release Process
 
-Releases are automated via GitHub Actions. When you push a version tag, the CI pipeline will:
+Releases are fully automated via GitHub Actions to prevent human errors and ensure consistency. The release process is triggered manually through the GitHub Actions UI, which then automatically handles all steps safely.
 
-1. Run tests, linting, and build validation
-2. Build multi-platform Docker images (linux/amd64, linux/arm64)
-3. Push to GitHub Container Registry
+#### Why Automation Prevents Mistakes
 
-```bash
-# Make sure you're on main with latest changes
-git checkout main
-git pull
+The automated release process eliminates common human errors:
 
-# Create an annotated tag
-git tag -a v1.0.0 -m "Release v1.0.0"
+- **Version Format Validation**: Automatically validates that the version follows the `v1.2.3` format, preventing typos like `v1.0` or `1.0.0`
+- **Pre-Release Testing**: Runs all tests, linting, and E2E tests before creating any tags or releases - broken code cannot be released
+- **Consistent Tagging**: Creates git tags automatically with proper format and messages, preventing tag naming mistakes
+- **Multi-Platform Builds**: Builds binaries for all platforms (Linux amd64/arm64, Darwin amd64/arm64) consistently
+- **Automatic Release Creation**: Creates GitHub Releases with all binaries attached automatically
+- **Docker Image Tagging**: Automatically creates multiple Docker image tags (version, semver patterns, latest) to ensure proper versioning
 
-# Push the tag
-git push origin v1.0.0
-```
+#### How to Create a Release
+
+1. **Navigate to GitHub Actions**:
+   - Go to the repository on GitHub
+   - Click on the "Actions" tab
+   - Select the "CI" workflow from the left sidebar
+
+2. **Trigger the Release Workflow**:
+   - Click "Run workflow" button (top right)
+   - Enter the version in the format `v1.2.3` (e.g., `v1.0.0`, `v1.0.1`, `v1.1.0`)
+   - Click "Run workflow"
+
+3. **Wait for Completion**:
+   - The workflow will automatically:
+     - ✅ Run all tests (unit tests, linting, E2E tests)
+     - ✅ Validate the version format
+     - ✅ Create and push the git tag (only if all tests pass)
+     - ✅ Build binaries for all platforms
+     - ✅ Create a GitHub Release with binaries attached
+     - ✅ Build and push Docker images with proper tags
+
+**Important**: The release will only proceed if all checks pass. If any test fails, the process stops and no tag or release is created, preventing broken releases.
+
+#### What Gets Created Automatically
+
+When the workflow completes successfully:
+
+- **Git Tag**: Annotated tag `v1.2.3` is created and pushed to the repository
+- **GitHub Release**: A release is created with:
+  - Release notes automatically generated from commits
+  - Binaries for all platforms attached:
+    - `promtotwilio-linux-amd64`
+    - `promtotwilio-linux-arm64`
+    - `promtotwilio-darwin-amd64`
+    - `promtotwilio-darwin-arm64`
+- **Docker Images**: Multi-platform images are pushed to GitHub Container Registry with multiple tags:
+  - `ghcr.io/swatto/promtotwilio:1.2.3` - exact version
+  - `ghcr.io/swatto/promtotwilio:1.2` - minor version (latest patch)
+  - `ghcr.io/swatto/promtotwilio:1` - major version (latest minor)
+  - `ghcr.io/swatto/promtotwilio:latest` - latest stable release
 
 ### Docker Images
 
@@ -144,29 +180,17 @@ Available tags for each release:
 - `ghcr.io/swatto/promtotwilio:1.0.0` - exact version
 - `ghcr.io/swatto/promtotwilio:1.0` - minor version (latest patch)
 - `ghcr.io/swatto/promtotwilio:1` - major version (latest minor)
+- `ghcr.io/swatto/promtotwilio:latest` - latest stable release
 
-### Version Convention
+### Troubleshooting
 
-| Tag | When to Use |
-|-----|-------------|
-| `v1.0.0` | First stable release |
-| `v1.0.1` | Bug fixes only |
-| `v1.1.0` | New features, backward compatible |
-| `v2.0.0` | Breaking changes |
+If a release fails:
 
-### Useful Commands
+1. **Check the workflow logs** in GitHub Actions to see which step failed
+2. **Fix the issue** (e.g., failing tests, linting errors)
+3. **Re-run the workflow** with the same version (the workflow will handle existing tags gracefully)
 
-```bash
-# List existing tags
-git tag -l
-
-# Delete a tag (if you made a mistake)
-git tag -d v1.0.0
-git push origin --delete v1.0.0
-
-# Create a release from an older commit
-git tag -a v1.0.0 <commit-sha> -m "Release v1.0.0"
-```
+**Note**: Do not manually create tags or releases. The automated process ensures consistency and prevents mistakes.
 
 ## Configuration example
 
