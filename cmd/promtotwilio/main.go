@@ -43,6 +43,11 @@ func printBanner(port string, cfg *handler.Config) {
 	fmt.Printf("    • Receivers:         %d configured\n", len(cfg.Receivers))
 	fmt.Printf("    • Max message len:   %d chars\n", cfg.MaxMessageLength)
 	fmt.Printf("    • Send resolved:     %t\n", cfg.SendResolved)
+	if cfg.APIKey != "" {
+		fmt.Println("    • Auth method:       API Key (recommended)")
+	} else {
+		fmt.Println("    • Auth method:       Account SID/Token")
+	}
 	if cfg.MessagePrefix != "" {
 		fmt.Printf("    • Message prefix:    %q\n", cfg.MessagePrefix)
 	}
@@ -65,6 +70,8 @@ func main() {
 	cfg := &handler.Config{
 		AccountSid:       os.Getenv("SID"),
 		AuthToken:        os.Getenv("TOKEN"),
+		APIKey:           os.Getenv("API_KEY"),
+		APIKeySecret:     os.Getenv("API_KEY_SECRET"),
 		Receivers:        handler.ParseReceivers(os.Getenv("RECEIVER")),
 		Sender:           os.Getenv("SENDER"),
 		TwilioBaseURL:    os.Getenv("TWILIO_BASE_URL"),
@@ -73,8 +80,26 @@ func main() {
 		MessagePrefix:    os.Getenv("MESSAGE_PREFIX"),
 	}
 
-	if cfg.AccountSid == "" || cfg.AuthToken == "" || cfg.Sender == "" {
-		slog.Error("startup: missing required environment variables (SID, TOKEN, SENDER)")
+	// Validate required configuration
+	if cfg.AccountSid == "" {
+		slog.Error("startup: missing required environment variable SID")
+		os.Exit(1)
+	}
+	if cfg.Sender == "" {
+		slog.Error("startup: missing required environment variable SENDER")
+		os.Exit(1)
+	}
+
+	// Validate auth: either API Key or Auth Token must be provided
+	if cfg.APIKey != "" {
+		// API Key auth: API_KEY_SECRET is required
+		if cfg.APIKeySecret == "" {
+			slog.Error("startup: API_KEY_SECRET is required when API_KEY is set")
+			os.Exit(1)
+		}
+	} else if cfg.AuthToken == "" {
+		// No API Key, so Auth Token is required
+		slog.Error("startup: missing required environment variable TOKEN (or use API_KEY + API_KEY_SECRET)")
 		os.Exit(1)
 	}
 

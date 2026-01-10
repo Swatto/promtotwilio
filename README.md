@@ -56,13 +56,43 @@ That's it. Point your AlertManager webhook at `http://promtotwilio:9090/send`.
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `SID` | ✅ | — | Twilio Account SID |
-| `TOKEN` | ✅ | — | Twilio Auth Token |
+| `TOKEN` | ✅* | — | Twilio Auth Token |
+| `API_KEY` | — | — | Twilio API Key SID (recommended for production) |
+| `API_KEY_SECRET` | — | — | Twilio API Key Secret (required if `API_KEY` is set) |
 | `SENDER` | ✅ | — | Twilio phone number (e.g., `+15551234567`) |
 | `RECEIVER` | — | — | Default receiver(s), comma-separated |
 | `PORT` | — | `9090` | HTTP server port |
 | `SEND_RESOLVED` | — | `false` | Send notifications when alerts resolve |
 | `MAX_MESSAGE_LENGTH` | — | `150` | Truncate messages beyond this length |
 | `MESSAGE_PREFIX` | — | — | Prefix for all messages (e.g., `[PROD]`) |
+
+*\* `TOKEN` is required unless `API_KEY` and `API_KEY_SECRET` are provided.*
+
+### Authentication Methods
+
+promtotwilio supports two authentication methods for the Twilio API:
+
+**Option 1: Account SID + Auth Token** (simpler, for development)
+```bash
+export SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export TOKEN=your_auth_token
+export SENDER=+15551234567
+```
+
+**Option 2: API Key (recommended for production)**
+```bash
+export SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export API_KEY=SKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export API_KEY_SECRET=your_api_key_secret
+export SENDER=+15551234567
+```
+
+API Keys are recommended for production because:
+- Compromised keys can be revoked individually without affecting other integrations
+- Keys can have restricted permissions
+- Your account-level Auth Token remains protected
+
+Create API Keys in the [Twilio Console](https://www.twilio.com/console/runtime/api-keys).
 
 ### Multiple Receivers
 
@@ -127,7 +157,11 @@ services:
     image: ghcr.io/swatto/promtotwilio:latest
     environment:
       SID: ${TWILIO_SID}
+      # Option 1: Auth Token
       TOKEN: ${TWILIO_TOKEN}
+      # Option 2: API Key (recommended for production)
+      # API_KEY: ${TWILIO_API_KEY}
+      # API_KEY_SECRET: ${TWILIO_API_KEY_SECRET}
       SENDER: ${TWILIO_SENDER}
       RECEIVER: ${ALERT_RECEIVERS}
       SEND_RESOLVED: "true"

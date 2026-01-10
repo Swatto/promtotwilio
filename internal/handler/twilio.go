@@ -20,23 +20,26 @@ type TwilioClient interface {
 
 // TwilioHTTPClient sends SMS via direct HTTP calls to Twilio API
 type TwilioHTTPClient struct {
-	httpClient *http.Client
-	accountSid string
-	authToken  string
-	baseURL    string
+	httpClient   *http.Client
+	accountSid   string // For URL construction
+	authUser     string // API Key SID or Account SID
+	authPassword string // API Key Secret or Auth Token
+	baseURL      string
 }
 
 // NewTwilioClient creates a new TwilioHTTPClient
-// If baseURL is empty, defaults to the official Twilio API URL
-func NewTwilioClient(accountSid, authToken, baseURL string) *TwilioHTTPClient {
+// accountSid is used for URL construction, authUser/authPassword are for HTTP Basic Auth.
+// If baseURL is empty, defaults to the official Twilio API URL.
+func NewTwilioClient(accountSid, authUser, authPassword, baseURL string) *TwilioHTTPClient {
 	if baseURL == "" {
 		baseURL = defaultTwilioBaseURL
 	}
 	return &TwilioHTTPClient{
-		accountSid: accountSid,
-		authToken:  authToken,
-		baseURL:    baseURL,
-		httpClient: &http.Client{},
+		accountSid:   accountSid,
+		authUser:     authUser,
+		authPassword: authPassword,
+		baseURL:      baseURL,
+		httpClient:   &http.Client{},
 	}
 }
 
@@ -57,7 +60,7 @@ func (t *TwilioHTTPClient) SendMessage(to, from, body string) error {
 		return fmt.Errorf("twilio: failed to create HTTP request: %w", err)
 	}
 
-	req.SetBasicAuth(t.accountSid, t.authToken)
+	req.SetBasicAuth(t.authUser, t.authPassword)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := t.httpClient.Do(req)

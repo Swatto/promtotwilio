@@ -21,7 +21,9 @@ const maxBodySize = 5 << 20
 //nolint:govet // fieldalignment: minor optimization not worth reduced readability
 type Config struct {
 	AccountSid       string
-	AuthToken        string
+	AuthToken        string // Auth Token (used when API Key is not provided)
+	APIKey           string // API Key SID (optional, takes precedence over AuthToken)
+	APIKeySecret     string // API Key Secret (required if APIKey is set)
 	Sender           string
 	Receivers        []string
 	TwilioBaseURL    string // Optional: override Twilio API base URL (for testing)
@@ -40,7 +42,15 @@ type Handler struct {
 
 // New creates a new Handler with the given configuration
 func New(cfg *Config, version string) *Handler {
-	client := NewTwilioClient(cfg.AccountSid, cfg.AuthToken, cfg.TwilioBaseURL)
+	// Determine auth credentials: API Key takes precedence over Auth Token
+	authUser := cfg.AccountSid
+	authPassword := cfg.AuthToken
+	if cfg.APIKey != "" {
+		authUser = cfg.APIKey
+		authPassword = cfg.APIKeySecret
+	}
+
+	client := NewTwilioClient(cfg.AccountSid, authUser, authPassword, cfg.TwilioBaseURL)
 	return &Handler{
 		Config:    cfg,
 		Client:    client,
