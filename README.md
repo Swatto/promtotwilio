@@ -240,6 +240,7 @@ make test       # Run tests
 make coverage   # Tests with coverage
 make lint       # Run linter
 make check      # All checks
+make e2e        # Run E2E tests (requires Docker)
 make dev        # Run locally
 ```
 

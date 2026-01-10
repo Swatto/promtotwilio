@@ -81,6 +81,20 @@ stop: ## Stop local test started by run
 	-docker stop $(INSTANCE_NAME)
 	-docker rm $(INSTANCE_NAME)
 
+e2e: ## Run E2E tests using docker-compose
+	@echo "Building E2E test containers..."
+	docker compose -f docker-compose.e2e.yml build
+	@echo "Running E2E tests..."
+	docker compose -f docker-compose.e2e.yml run --rm e2e-tests; \
+	EXIT_CODE=$$?; \
+	if [ $$EXIT_CODE -ne 0 ]; then \
+		echo "E2E tests failed, showing logs..."; \
+		docker compose -f docker-compose.e2e.yml logs; \
+	fi; \
+	echo "Cleaning up..."; \
+	docker compose -f docker-compose.e2e.yml down -v --remove-orphans; \
+	exit $$EXIT_CODE
+
 #-----------------------------------------------------------------------------
 # Development targets
 #-----------------------------------------------------------------------------
@@ -98,4 +112,4 @@ check: fmt vet lint test ## Run all checks (fmt, vet, lint, test)
 help: ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
-.PHONY: all build build-all test coverage fmt vet lint build-docker clean re run stop dev check help
+.PHONY: all build build-all test coverage fmt vet lint build-docker clean re run stop e2e dev check help
