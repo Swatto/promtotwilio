@@ -65,8 +65,28 @@ That's it. Point your AlertManager webhook at `http://promtotwilio:9090/send`.
 | `SEND_RESOLVED` | — | `false` | Send notifications when alerts resolve |
 | `MAX_MESSAGE_LENGTH` | — | `150` | Truncate messages beyond this length |
 | `MESSAGE_PREFIX` | — | — | Prefix for all messages (e.g., `[PROD]`) |
+| `RATE_LIMIT` | — | `0` (off) | Max requests per minute on `/send` |
+| `LOG_FORMAT` | — | `simple` | Access log format: `simple` or `nginx` |
 
 *\* `TOKEN` is required unless `API_KEY` and `API_KEY_SECRET` are provided.*
+
+### Log Formats
+
+`LOG_FORMAT=simple` (default) — structured slog output:
+```
+2026/02/18 11:34:13 INFO http request method=GET path=/ status=200 bytes=4 duration=11.459µs
+2026/02/18 11:34:13 INFO http request method=GET path=/health status=200 bytes=48 duration=128.375µs
+2026/02/18 11:34:13 INFO http request method=POST path=/send status=200 bytes=51 duration=135µs
+2026/02/18 11:34:13 INFO http request method=POST path=/send status=429 bytes=20 duration=12.583µs
+```
+
+`LOG_FORMAT=nginx` — nginx combined log format:
+```
+127.0.0.1:50145 - - [18/Feb/2026:11:34:13 +0100] "GET / HTTP/1.1" 200 4 "-" "Go-http-client/1.1" "-"
+127.0.0.1:50146 - - [18/Feb/2026:11:34:13 +0100] "GET /health HTTP/1.1" 200 48 "-" "Go-http-client/1.1" "-"
+127.0.0.1:50147 - - [18/Feb/2026:11:34:13 +0100] "POST /send HTTP/1.1" 200 51 "-" "Go-http-client/1.1" "-"
+127.0.0.1:50148 - - [18/Feb/2026:11:34:13 +0100] "POST /send HTTP/1.1" 429 20 "-" "Go-http-client/1.1" "-"
+```
 
 ### Authentication Methods
 
@@ -132,6 +152,8 @@ curl -X POST "http://localhost:9090/send?receiver=%2B1234567890" \
   "errors": []
 }
 ```
+
+Returns `429 Too Many Requests` if `RATE_LIMIT` is configured and the limit is exceeded.
 
 ---
 
