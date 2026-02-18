@@ -1,14 +1,12 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -291,81 +289,6 @@ func TestRun_PortConflict(t *testing.T) {
 	}
 }
 
-// ---------- printBanner tests ----------
-
-func TestPrintBanner_AuthToken(t *testing.T) {
-	output := captureBanner("8080", &handler.Config{
-		Sender:           "+1234",
-		Receivers:        []string{"+5678"},
-		MaxMessageLength: 150,
-		AuthToken:        "tok",
-	})
-
-	for _, want := range []string{"8080", "+1234", "1 configured", "150 chars", "Account SID/Token"} {
-		if !strings.Contains(output, want) {
-			t.Errorf("expected banner to contain %q, got:\n%s", want, output)
-		}
-	}
-}
-
-func TestPrintBanner_APIKey(t *testing.T) {
-	output := captureBanner("9090", &handler.Config{
-		Sender:   "+1234",
-		APIKey:   "SK123",
-		LogFormat: "nginx",
-	})
-
-	if !strings.Contains(output, "API Key (recommended)") {
-		t.Errorf("expected 'API Key (recommended)' in banner, got:\n%s", output)
-	}
-	if !strings.Contains(output, "nginx") {
-		t.Errorf("expected 'nginx' log format in banner, got:\n%s", output)
-	}
-}
-
-func TestPrintBanner_OptionalFields(t *testing.T) {
-	output := captureBanner("9090", &handler.Config{
-		Sender:        "+1234",
-		AuthToken:     "tok",
-		RateLimit:     100,
-		MessagePrefix: "[PRE]",
-		TwilioBaseURL: "http://custom",
-	})
-
-	for _, want := range []string{"100 req/min", `"[PRE]"`, "http://custom (custom)"} {
-		if !strings.Contains(output, want) {
-			t.Errorf("expected banner to contain %q, got:\n%s", want, output)
-		}
-	}
-}
-
-func TestPrintBanner_DefaultLogFormat(t *testing.T) {
-	output := captureBanner("9090", &handler.Config{
-		Sender:    "+1234",
-		AuthToken: "tok",
-	})
-
-	if !strings.Contains(output, "simple") {
-		t.Errorf("expected default log format 'simple' in banner, got:\n%s", output)
-	}
-}
-
-func TestPrintBanner_WebhookAuthAndDryRun(t *testing.T) {
-	output := captureBanner("9090", &handler.Config{
-		Sender:        "+1234",
-		AuthToken:     "tok",
-		WebhookSecret: "secret",
-		DryRun:        true,
-	})
-
-	if !strings.Contains(output, "Webhook auth") {
-		t.Errorf("expected webhook auth in banner, got:\n%s", output)
-	}
-	if !strings.Contains(output, "Dry-run") {
-		t.Errorf("expected dry-run in banner, got:\n%s", output)
-	}
-}
-
 // ---------- helpers ----------
 
 func freePort(t *testing.T) string {
@@ -390,19 +313,4 @@ func waitForServer(addr string, timeout time.Duration) error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("server at %s not ready after %v", addr, timeout)
-}
-
-func captureBanner(port string, cfg *handler.Config) string {
-	old := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-
-	printBanner(port, cfg)
-
-	_ = w.Close()
-	os.Stdout = old
-
-	var buf bytes.Buffer
-	_, _ = io.Copy(&buf, r)
-	return buf.String()
 }

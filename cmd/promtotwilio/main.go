@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"runtime"
 	"strconv"
 	"syscall"
 	"time"
@@ -24,54 +23,6 @@ const (
 
 // Version can be set at build time via ldflags
 var Version = "1.0.0"
-
-// printBanner prints startup information about the application
-func printBanner(port string, cfg *handler.Config) {
-	fmt.Println()
-	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                         promtotwilio                         ║")
-	fmt.Println("║          Prometheus Alertmanager → Twilio SMS Bridge         ║")
-	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
-	fmt.Println()
-	fmt.Printf("  Version:        %s\n", Version)
-	fmt.Printf("  Go version:     %s\n", runtime.Version())
-	fmt.Printf("  OS/Arch:        %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	fmt.Println()
-	fmt.Println("  Configuration:")
-	fmt.Printf("    • Port:              %s\n", port)
-	fmt.Printf("    • Sender:            %s\n", cfg.Sender)
-	fmt.Printf("    • Receivers:         %d configured\n", len(cfg.Receivers))
-	fmt.Printf("    • Max message len:   %d chars\n", cfg.MaxMessageLength)
-	fmt.Printf("    • Send resolved:     %t\n", cfg.SendResolved)
-	if cfg.APIKey != "" {
-		fmt.Println("    • Auth method:       API Key (recommended)")
-	} else {
-		fmt.Println("    • Auth method:       Account SID/Token")
-	}
-	logFmt := cfg.LogFormat
-	if logFmt == "" {
-		logFmt = "simple"
-	}
-	fmt.Printf("    • Log format:        %s\n", logFmt)
-	if cfg.RateLimit > 0 {
-		fmt.Printf("    • Rate limit:        %d req/min\n", cfg.RateLimit)
-	}
-	if cfg.MessagePrefix != "" {
-		fmt.Printf("    • Message prefix:    %q\n", cfg.MessagePrefix)
-	}
-	if cfg.TwilioBaseURL != "" {
-		fmt.Printf("    • Twilio base URL:   %s (custom)\n", cfg.TwilioBaseURL)
-	}
-	if cfg.WebhookSecret != "" {
-		fmt.Println("    • Webhook auth:       enabled (Bearer)")
-	}
-	if cfg.DryRun {
-		fmt.Println("    • Dry-run:             enabled (no SMS sent)")
-	}
-	fmt.Println()
-	fmt.Printf("  Server listening on http://0.0.0.0:%s\n", port)
-	fmt.Println()
-}
 
 // loadConfig reads environment variables and returns the application config and port.
 func loadConfig() (*handler.Config, string) {
