@@ -25,7 +25,7 @@ services:
       - mock-twilio
 
   alertmanager:
-    image: prom/alertmanager:v0.30.0
+    image: prom/alertmanager:v0.31.1
     volumes:
       - ./test/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
     command:
@@ -36,7 +36,7 @@ services:
       - promtotwilio
 
   prometheus:
-    image: prom/prometheus:v3.4.1
+    image: prom/prometheus:v3.5.1
     volumes:
       - ./test/prometheus:/etc/prometheus:ro
     command:
