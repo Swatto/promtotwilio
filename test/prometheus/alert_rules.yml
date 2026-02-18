@@ -3,7 +3,7 @@ groups:
     rules:
       - alert: TestAlertFiring
         expr: test_alert_trigger == 1
-        for: 5s
+        for: 2s
         labels:
           severity: critical
           instance: mock-exporter:9100

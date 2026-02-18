@@ -31,6 +31,7 @@ services:
     command:
       - '--config.file=/etc/alertmanager/alertmanager.yml'
       - '--log.level=debug'
+      - '--cluster.settle-timeout=0s'
     depends_on:
       - promtotwilio
 

@@ -253,7 +253,7 @@ SUCCESS=$(echo "$RESPONSE" | jq -r '.success' 2>/dev/null)
 SENT=$(echo "$RESPONSE" | jq -r '.sent' 2>/dev/null)
 
 # Wait a moment for message to be processed
-sleep 2
+sleep 1
 
 # Check mock-twilio for messages
 MESSAGES_RESPONSE=$(curl -sf "$MOCK_TWILIO_URL/messages" 2>/dev/null || echo '{"count":0,"messages":[]}')
@@ -322,10 +322,9 @@ if [ "$HTTP_CODE" != "200" ]; then
 else
     echo "  Alert injected successfully (HTTP $HTTP_CODE)"
 
-    # Wait for AlertManager to process and send webhook
-    # AlertManager has a ~10s gossip settle time before sending notifications
-    echo "  Waiting for AlertManager to settle and process alert (15s)..."
-    sleep 15
+    # Wait for AlertManager to process and send webhook (group_wait=1s, settle=0s)
+    echo "  Waiting for AlertManager to process alert (5s)..."
+    sleep 5
 
     # Check if mock-twilio received the SMS
     echo "  Checking mock-twilio for received messages..."
@@ -370,8 +369,8 @@ curl -sf -X POST -H "Content-Type: application/json" \
     "$MOCK_EXPORTER_URL/control" > /dev/null
 
 # Give Prometheus time to scrape the healthy state
-echo "Waiting for Prometheus to scrape healthy state (10s)..."
-sleep 10
+echo "Waiting for Prometheus to scrape healthy state (5s)..."
+sleep 5
 
 # Test 10: Full Prometheus alert cycle - Trigger firing alert
 echo ""
@@ -391,12 +390,12 @@ else
 fi
 
 # Wait for:
-# - Prometheus to scrape (5s interval)
-# - Alert rule evaluation (for: 5s)
+# - Prometheus to scrape (2s interval)
+# - Alert rule evaluation (for: 2s)
 # - AlertManager to receive and process
 # - promtotwilio to send SMS
-echo "  Waiting for Prometheus to detect unhealthy state and fire alert (25s)..."
-sleep 25
+echo "  Waiting for Prometheus to detect unhealthy state and fire alert (12s)..."
+sleep 12
 
 # Check if mock-twilio received the firing alert SMS
 echo "  Checking mock-twilio for firing alert message..."
@@ -439,11 +438,11 @@ else
 fi
 
 # Wait for:
-# - Prometheus to scrape healthy state
+# - Prometheus to scrape healthy state (2s interval)
 # - Alert to resolve
 # - AlertManager to send resolved notification
-echo "  Waiting for Prometheus to detect healthy state and resolve alert (20s)..."
-sleep 20
+echo "  Waiting for Prometheus to detect healthy state and resolve alert (10s)..."
+sleep 10
 
 # Check if mock-twilio received the resolved alert SMS
 echo "  Checking mock-twilio for resolved alert message..."
