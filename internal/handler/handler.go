@@ -30,14 +30,43 @@ type Config struct {
 	SendResolved     bool   // Enable sending notifications for resolved alerts
 	MaxMessageLength int    // Maximum message length before truncation (default: 150)
 	MessagePrefix    string // Custom prefix to prepend to all messages (optional)
+	RateLimit        int    // Max requests per minute on /send (0 = disabled)
+	LogFormat        string // Access log format: "simple" (default) or "nginx"
+}
+
+// Validate checks that all required configuration fields are set and consistent.
+func (c *Config) Validate() error {
+	if c.AccountSid == "" {
+		return fmt.Errorf("missing required configuration: AccountSid (env SID)")
+	}
+	if c.Sender == "" {
+		return fmt.Errorf("missing required configuration: Sender (env SENDER)")
+	}
+	if c.RateLimit < 0 {
+		return fmt.Errorf("RateLimit must be >= 0 (got %d)", c.RateLimit)
+	}
+	switch c.LogFormat {
+	case "", "simple", "nginx":
+	default:
+		return fmt.Errorf("LogFormat must be \"simple\" or \"nginx\" (got %q)", c.LogFormat)
+	}
+	if c.APIKey != "" {
+		if c.APIKeySecret == "" {
+			return fmt.Errorf("APIKeySecret is required when APIKey is set")
+		}
+	} else if c.AuthToken == "" {
+		return fmt.Errorf("missing required configuration: AuthToken (env TOKEN) or APIKey + APIKeySecret")
+	}
+	return nil
 }
 
 // Handler handles HTTP requests for the promtotwilio service
 type Handler struct {
-	Config    *Config
-	Client    TwilioClient
-	StartTime time.Time
-	Version   string
+	Config      *Config
+	Client      TwilioClient
+	StartTime   time.Time
+	Version     string
+	rateLimiter *RateLimiter
 }
 
 // New creates a new Handler with the given configuration
@@ -51,12 +80,16 @@ func New(cfg *Config, version string) *Handler {
 	}
 
 	client := NewTwilioClient(cfg.AccountSid, authUser, authPassword, cfg.TwilioBaseURL)
-	return &Handler{
+	h := &Handler{
 		Config:    cfg,
 		Client:    client,
 		StartTime: time.Now(),
 		Version:   version,
 	}
+	if cfg.RateLimit > 0 {
+		h.rateLimiter = NewRateLimiter(cfg.RateLimit)
+	}
+	return h
 }
 
 // NewWithClient creates a new Handler with a custom TwilioClient (useful for testing)
@@ -73,7 +106,12 @@ func NewWithClient(cfg *Config, client TwilioClient, version string) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", h.Ping)
 	mux.HandleFunc("GET /health", h.Health)
-	mux.HandleFunc("POST /send", h.SendRequest)
+
+	var sendHandler http.Handler = http.HandlerFunc(h.SendRequest)
+	if h.rateLimiter != nil {
+		sendHandler = h.rateLimiter.Wrap(sendHandler)
+	}
+	mux.Handle("POST /send", sendHandler)
 }
 
 // Ping handles the ping endpoint

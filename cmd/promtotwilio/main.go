@@ -29,8 +29,8 @@ var Version = "1.0.0"
 func printBanner(port string, cfg *handler.Config) {
 	fmt.Println()
 	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                      promtotwilio                            ║")
-	fmt.Println("║      Prometheus Alertmanager → Twilio SMS Bridge             ║")
+	fmt.Println("║                         promtotwilio                         ║")
+	fmt.Println("║          Prometheus Alertmanager → Twilio SMS Bridge         ║")
 	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
 	fmt.Println()
 	fmt.Printf("  Version:        %s\n", Version)
@@ -48,6 +48,14 @@ func printBanner(port string, cfg *handler.Config) {
 	} else {
 		fmt.Println("    • Auth method:       Account SID/Token")
 	}
+	logFmt := cfg.LogFormat
+	if logFmt == "" {
+		logFmt = "simple"
+	}
+	fmt.Printf("    • Log format:        %s\n", logFmt)
+	if cfg.RateLimit > 0 {
+		fmt.Printf("    • Rate limit:        %d req/min\n", cfg.RateLimit)
+	}
 	if cfg.MessagePrefix != "" {
 		fmt.Printf("    • Message prefix:    %q\n", cfg.MessagePrefix)
 	}
@@ -60,10 +68,17 @@ func printBanner(port string, cfg *handler.Config) {
 }
 
 func main() {
-	maxMessageLength := 150 // Default
+	maxMessageLength := 150
 	if maxLenStr := os.Getenv("MAX_MESSAGE_LENGTH"); maxLenStr != "" {
 		if parsedLen, err := strconv.Atoi(maxLenStr); err == nil && parsedLen > 0 {
 			maxMessageLength = parsedLen
+		}
+	}
+
+	var rateLimit int
+	if rlStr := os.Getenv("RATE_LIMIT"); rlStr != "" {
+		if parsed, err := strconv.Atoi(rlStr); err == nil && parsed > 0 {
+			rateLimit = parsed
 		}
 	}
 
@@ -78,28 +93,12 @@ func main() {
 		SendResolved:     os.Getenv("SEND_RESOLVED") == "true",
 		MaxMessageLength: maxMessageLength,
 		MessagePrefix:    os.Getenv("MESSAGE_PREFIX"),
+		RateLimit:        rateLimit,
+		LogFormat:        os.Getenv("LOG_FORMAT"),
 	}
 
-	// Validate required configuration
-	if cfg.AccountSid == "" {
-		slog.Error("startup: missing required environment variable SID")
-		os.Exit(1)
-	}
-	if cfg.Sender == "" {
-		slog.Error("startup: missing required environment variable SENDER")
-		os.Exit(1)
-	}
-
-	// Validate auth: either API Key or Auth Token must be provided
-	if cfg.APIKey != "" {
-		// API Key auth: API_KEY_SECRET is required
-		if cfg.APIKeySecret == "" {
-			slog.Error("startup: API_KEY_SECRET is required when API_KEY is set")
-			os.Exit(1)
-		}
-	} else if cfg.AuthToken == "" {
-		// No API Key, so Auth Token is required
-		slog.Error("startup: missing required environment variable TOKEN (or use API_KEY + API_KEY_SECRET)")
+	if err := cfg.Validate(); err != nil {
+		slog.Error("startup: invalid configuration", "error", err)
 		os.Exit(1)
 	}
 
@@ -114,7 +113,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         ":" + port,
-		Handler:      mux,
+		Handler:      handler.LogRequests(cfg.LogFormat, mux),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  60 * time.Second,
