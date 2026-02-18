@@ -212,7 +212,7 @@ func TestRun_StartsAndStops(t *testing.T) {
 		t.Fatalf("GET / failed: %v", err)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if string(body) != "ping" {
 		t.Errorf("expected 'ping', got %q", body)
 	}
@@ -227,7 +227,7 @@ func TestRun_StartsAndStops(t *testing.T) {
 		cancel()
 		t.Fatalf("failed to decode health response: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if health.Status != "ok" {
 		t.Errorf("expected health status 'ok', got %q", health.Status)
 	}
@@ -255,7 +255,7 @@ func TestRun_PortConflict(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to occupy port %s: %v", port, err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -337,7 +337,7 @@ func freePort(t *testing.T) string {
 		t.Fatalf("failed to get free port: %v", err)
 	}
 	port := ln.Addr().(*net.TCPAddr).Port
-	ln.Close()
+	_ = ln.Close()
 	return fmt.Sprintf("%d", port)
 }
 
@@ -346,7 +346,7 @@ func waitForServer(addr string, timeout time.Duration) error {
 	for time.Now().Before(deadline) {
 		resp, err := http.Get(addr + "/")
 		if err == nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil
 		}
 		time.Sleep(50 * time.Millisecond)
@@ -361,10 +361,10 @@ func captureBanner(port string, cfg *handler.Config) string {
 
 	printBanner(port, cfg)
 
-	w.Close()
+	_ = w.Close()
 	os.Stdout = old
 
 	var buf bytes.Buffer
-	io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, r)
 	return buf.String()
 }
