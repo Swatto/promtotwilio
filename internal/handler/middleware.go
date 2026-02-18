@@ -103,7 +103,7 @@ func LogRequests(format string, next http.Handler) http.Handler {
 				}
 				return s
 			}
-			fmt.Fprintf(os.Stdout, "%s - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" \"%s\"\n",
+			if _, err := fmt.Fprintf(os.Stdout, "%s - - [%s] \"%s %s %s\" %d %d \"%s\" \"%s\" \"%s\"\n",
 				r.RemoteAddr,
 				start.Format("02/Jan/2006:15:04:05 -0700"),
 				r.Method,
@@ -114,7 +114,9 @@ func LogRequests(format string, next http.Handler) http.Handler {
 				orDash(r.Referer()),
 				orDash(r.UserAgent()),
 				orDash(r.Header.Get("X-Forwarded-For")),
-			)
+			); err != nil {
+				slog.Error("failed to write access log", "error", err)
+			}
 		} else {
 			slog.Info("http request",
 				"method", r.Method,
