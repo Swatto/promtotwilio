@@ -155,3 +155,79 @@ func TestResponseRecorder_ExplicitStatus(t *testing.T) {
 		t.Fatalf("expected 404, got %d", rec.status)
 	}
 }
+
+func TestRequireWebhookAuth_EmptySecret(t *testing.T) {
+	called := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	h := RequireWebhookAuth("", next)
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/send", nil))
+
+	if !called {
+		t.Fatal("handler should have been called when secret is empty")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}
+
+func TestRequireWebhookAuth_NoHeader(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called")
+	})
+	h := RequireWebhookAuth("my-secret", next)
+
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/send", nil))
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+	if w.Body.String() != "unauthorized\n" {
+		t.Errorf("unexpected body %q", w.Body.String())
+	}
+	if got := w.Header().Get("WWW-Authenticate"); got != `Bearer realm="promtotwilio"` {
+		t.Errorf("WWW-Authenticate: got %q", got)
+	}
+}
+
+func TestRequireWebhookAuth_WrongSecret(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler should not be called")
+	})
+	h := RequireWebhookAuth("my-secret", next)
+
+	req := httptest.NewRequest(http.MethodPost, "/send", nil)
+	req.Header.Set("Authorization", "Bearer wrong-secret")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestRequireWebhookAuth_CorrectBearer(t *testing.T) {
+	called := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	h := RequireWebhookAuth("my-secret", next)
+
+	req := httptest.NewRequest(http.MethodPost, "/send", nil)
+	req.Header.Set("Authorization", "Bearer my-secret")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if !called {
+		t.Fatal("handler should have been called with correct Bearer token")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+}

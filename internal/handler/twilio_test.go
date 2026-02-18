@@ -188,6 +188,31 @@ func TestNew_WithAPIKey(t *testing.T) {
 	}
 }
 
+func TestTwilioHTTPClient_SendMessage_RetriesOn5xx(t *testing.T) {
+	attempt := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt++
+		if attempt < 3 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":"overloaded"}`))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"sid":"SM123"}`))
+	}))
+	defer server.Close()
+
+	client := NewTwilioClient("AC123456", "AC123456", "authToken", server.URL)
+	err := client.SendMessage("+15551234567", "+15559876543", "Test")
+
+	if err != nil {
+		t.Fatalf("unexpected error after retries: %v", err)
+	}
+	if attempt != 3 {
+		t.Errorf("expected 3 attempts, got %d", attempt)
+	}
+}
+
 func TestNew_APIKeyTakesPrecedence(t *testing.T) {
 	// Create a test server to verify which credentials are used
 	var receivedAuthUser string

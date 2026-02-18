@@ -264,3 +264,92 @@ func TestSendRequest_BodySizeLimitEnforced(t *testing.T) {
 		t.Errorf("call count: got %d, want 0", mockClient.CallCount())
 	}
 }
+
+func TestSendRequest_WebhookAuth(t *testing.T) {
+	firingPayload := `{"status":"firing","alerts":[{"annotations":{"summary":"Test"},"startsAt":"2024-01-01T12:00:00Z"}]}`
+	cfg := Config{
+		Receivers:     []string{"+1234567890"},
+		Sender:        "+0987654321",
+		WebhookSecret: "secret123",
+	}
+	mock := &MockTwilioClient{}
+	h := NewWithClient(&cfg, mock, "test")
+	mux := http.NewServeMux()
+	h.RegisterRoutes(mux)
+
+	t.Run("no auth header returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(firingPayload))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("status: got %d, want 401", w.Code)
+		}
+		if mock.CallCount() != 0 {
+			t.Errorf("mock should not be called, got %d", mock.CallCount())
+		}
+	})
+
+	t.Run("wrong bearer returns 401", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(firingPayload))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer wrong")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("status: got %d, want 401", w.Code)
+		}
+	})
+
+	t.Run("correct bearer succeeds", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(firingPayload))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer secret123")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("status: got %d, want 200", w.Code)
+		}
+		var resp SendResponse
+		if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if !resp.Success || resp.Sent != 1 {
+			t.Errorf("success=%v sent=%d", resp.Success, resp.Sent)
+		}
+		if mock.CallCount() != 1 {
+			t.Errorf("mock call count: got %d, want 1", mock.CallCount())
+		}
+	})
+}
+
+func TestSendRequest_DryRun(t *testing.T) {
+	firingPayload := `{"status":"firing","alerts":[{"annotations":{"summary":"Dry run test"},"startsAt":"2024-01-01T12:00:00Z"}]}`
+	mock := &MockTwilioClient{}
+	cfg := Config{
+		Receivers: []string{"+1234567890"},
+		Sender:    "+0987654321",
+		DryRun:   true,
+	}
+	h := NewWithClient(&cfg, mock, "test")
+
+	req := httptest.NewRequest(http.MethodPost, "/send", bytes.NewBufferString(firingPayload))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status: got %d, want 200", w.Code)
+	}
+	var resp SendResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !resp.Success || resp.Sent != 1 {
+		t.Errorf("success=%v sent=%d", resp.Success, resp.Sent)
+	}
+	if mock.CallCount() != 0 {
+		t.Errorf("dry-run: mock should not be called, got %d", mock.CallCount())
+	}
+}

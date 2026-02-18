@@ -62,6 +62,12 @@ func printBanner(port string, cfg *handler.Config) {
 	if cfg.TwilioBaseURL != "" {
 		fmt.Printf("    • Twilio base URL:   %s (custom)\n", cfg.TwilioBaseURL)
 	}
+	if cfg.WebhookSecret != "" {
+		fmt.Println("    • Webhook auth:       enabled (Bearer)")
+	}
+	if cfg.DryRun {
+		fmt.Println("    • Dry-run:             enabled (no SMS sent)")
+	}
 	fmt.Println()
 	fmt.Printf("  Server listening on http://0.0.0.0:%s\n", port)
 	fmt.Println()
@@ -96,6 +102,8 @@ func loadConfig() (*handler.Config, string) {
 		MessagePrefix:    os.Getenv("MESSAGE_PREFIX"),
 		RateLimit:        rateLimit,
 		LogFormat:        os.Getenv("LOG_FORMAT"),
+		WebhookSecret:    os.Getenv("WEBHOOK_SECRET"),
+		DryRun:           os.Getenv("DRY_RUN") == "true",
 	}
 
 	port := os.Getenv("PORT")

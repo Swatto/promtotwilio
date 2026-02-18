@@ -1,13 +1,38 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
+
+// RequireWebhookAuth returns a handler that requires Authorization: Bearer <secret>
+// when secret is non-empty. If secret is empty, the next handler is called without check.
+func RequireWebhookAuth(secret string, next http.Handler) http.Handler {
+	if secret == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		auth := r.Header.Get("Authorization")
+		const prefix = "Bearer "
+		token := ""
+		if strings.HasPrefix(auth, prefix) {
+			token = strings.TrimSpace(auth[len(prefix):])
+		}
+		if subtle.ConstantTimeCompare([]byte(token), []byte(secret)) != 1 {
+			slog.Warn("webhook: unauthorized request", "path", r.URL.Path)
+			w.Header().Set("WWW-Authenticate", `Bearer realm="promtotwilio"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 type responseRecorder struct {
 	http.ResponseWriter

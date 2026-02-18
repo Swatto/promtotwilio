@@ -32,6 +32,8 @@ type Config struct {
 	MessagePrefix    string // Custom prefix to prepend to all messages (optional)
 	RateLimit        int    // Max requests per minute on /send (0 = disabled)
 	LogFormat        string // Access log format: "simple" (default) or "nginx"
+	WebhookSecret    string // If set, POST /send requires Authorization: Bearer <secret>
+	DryRun           bool   // If true, log messages instead of calling Twilio
 }
 
 // Validate checks that all required configuration fields are set and consistent.
@@ -67,6 +69,7 @@ type Handler struct {
 	StartTime   time.Time
 	Version     string
 	rateLimiter *RateLimiter
+	metrics     *Metrics
 }
 
 // New creates a new Handler with the given configuration
@@ -85,6 +88,7 @@ func New(cfg *Config, version string) *Handler {
 		Client:    client,
 		StartTime: time.Now(),
 		Version:   version,
+		metrics:   NewMetrics(),
 	}
 	if cfg.RateLimit > 0 {
 		h.rateLimiter = NewRateLimiter(cfg.RateLimit)
@@ -99,6 +103,7 @@ func NewWithClient(cfg *Config, client TwilioClient, version string) *Handler {
 		Client:    client,
 		StartTime: time.Now(),
 		Version:   version,
+		metrics:   NewMetrics(),
 	}
 }
 
@@ -106,10 +111,14 @@ func NewWithClient(cfg *Config, client TwilioClient, version string) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /", h.Ping)
 	mux.HandleFunc("GET /health", h.Health)
+	mux.HandleFunc("GET /metrics", h.Metrics)
 
 	var sendHandler http.Handler = http.HandlerFunc(h.SendRequest)
 	if h.rateLimiter != nil {
 		sendHandler = h.rateLimiter.Wrap(sendHandler)
+	}
+	if h.Config.WebhookSecret != "" {
+		sendHandler = RequireWebhookAuth(h.Config.WebhookSecret, sendHandler)
 	}
 	mux.Handle("POST /send", sendHandler)
 }
@@ -188,6 +197,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	shouldProcess := status == "firing" || (status == "resolved" && h.Config.SendResolved)
 
 	if shouldProcess {
+		h.metrics.IncAlertsProcessed()
 		var wg sync.WaitGroup
 		var mu sync.Mutex
 		var sendErrors []string
@@ -203,9 +213,15 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 					defer mu.Unlock()
 					if sendErr != nil {
 						failed++
+						if !h.Config.DryRun {
+							h.metrics.IncSMSFailed()
+						}
 						sendErrors = append(sendErrors, fmt.Sprintf("Failed to send to %s: %v", rcv, sendErr))
 					} else {
 						sent++
+						if !h.Config.DryRun {
+							h.metrics.IncSMSSent()
+						}
 					}
 				})
 			}
@@ -232,6 +248,11 @@ func (h *Handler) sendMessage(receiver string, alert *Alert, status string) erro
 	body, err := FormatMessage(alert, status, h.Config)
 	if err != nil {
 		return err
+	}
+
+	if h.Config.DryRun {
+		slog.Info("dry-run: would send SMS", "receiver", receiver, "body", body)
+		return nil
 	}
 
 	if err := h.Client.SendMessage(receiver, h.Config.Sender, body); err != nil {

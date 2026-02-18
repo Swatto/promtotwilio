@@ -67,6 +67,8 @@ That's it. Point your AlertManager webhook at `http://promtotwilio:9090/send`.
 | `MESSAGE_PREFIX` | — | — | Prefix for all messages (e.g., `[PROD]`) |
 | `RATE_LIMIT` | — | `0` (off) | Max requests per minute on `/send` |
 | `LOG_FORMAT` | — | `simple` | Access log format: `simple` or `nginx` |
+| `WEBHOOK_SECRET` | — | — | If set, `POST /send` requires `Authorization: Bearer <value>` |
+| `DRY_RUN` | — | `false` | If `true`, log messages instead of sending SMS |
 
 *\* `TOKEN` is required unless `API_KEY` and `API_KEY_SECRET` are provided.*
 
@@ -130,8 +132,13 @@ Health ping. Returns `200 OK`.
 ### `GET /health`
 Returns JSON with status, version, and uptime.
 
+### `GET /metrics`
+Returns Prometheus text exposition format with counters: `promtotwilio_alerts_processed_total`, `promtotwilio_sms_sent_total`, `promtotwilio_sms_failed_total`.
+
 ### `POST /send`
 Receives Prometheus/AlertManager webhook payloads and sends SMS.
+
+**Authentication:** If `WEBHOOK_SECRET` is set, requests must include `Authorization: Bearer <WEBHOOK_SECRET>`.
 
 **Query Parameters:**
 - `receiver` — Override default receiver(s). Comma-separated, URL-encoded.
@@ -153,7 +160,7 @@ curl -X POST "http://localhost:9090/send?receiver=%2B1234567890" \
 }
 ```
 
-Returns `429 Too Many Requests` if `RATE_LIMIT` is configured and the limit is exceeded.
+Returns `401 Unauthorized` if `WEBHOOK_SECRET` is set and the `Authorization` header is missing or invalid. Returns `429 Too Many Requests` if `RATE_LIMIT` is configured and the limit is exceeded.
 
 ---
 

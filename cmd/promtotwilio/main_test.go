@@ -174,6 +174,28 @@ func TestLoadConfig_OptionalFields(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_WebhookSecret(t *testing.T) {
+	env := minimalEnv()
+	env["WEBHOOK_SECRET"] = "bearer-token-123"
+	setEnv(t, env)
+
+	cfg, _ := loadConfig()
+	if cfg.WebhookSecret != "bearer-token-123" {
+		t.Errorf("expected WebhookSecret %q, got %q", "bearer-token-123", cfg.WebhookSecret)
+	}
+}
+
+func TestLoadConfig_DryRun(t *testing.T) {
+	env := minimalEnv()
+	env["DRY_RUN"] = "true"
+	setEnv(t, env)
+
+	cfg, _ := loadConfig()
+	if !cfg.DryRun {
+		t.Error("expected DryRun to be true")
+	}
+}
+
 // ---------- run tests ----------
 
 func TestRun_InvalidConfig(t *testing.T) {
@@ -325,6 +347,22 @@ func TestPrintBanner_DefaultLogFormat(t *testing.T) {
 
 	if !strings.Contains(output, "simple") {
 		t.Errorf("expected default log format 'simple' in banner, got:\n%s", output)
+	}
+}
+
+func TestPrintBanner_WebhookAuthAndDryRun(t *testing.T) {
+	output := captureBanner("9090", &handler.Config{
+		Sender:        "+1234",
+		AuthToken:     "tok",
+		WebhookSecret: "secret",
+		DryRun:        true,
+	})
+
+	if !strings.Contains(output, "Webhook auth") {
+		t.Errorf("expected webhook auth in banner, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Dry-run") {
+		t.Errorf("expected dry-run in banner, got:\n%s", output)
 	}
 }
 

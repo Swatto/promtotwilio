@@ -2,16 +2,20 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
 )
 
-const defaultTwilioBaseURL = "https://api.twilio.com"
+const (
+	defaultTwilioBaseURL = "https://api.twilio.com"
+	twilioMaxRetries     = 3
+	twilioRequestTimeout = 30 * time.Second
+)
 
 // TwilioClient is an interface for sending SMS messages
 type TwilioClient interface {
@@ -39,47 +43,67 @@ func NewTwilioClient(accountSid, authUser, authPassword, baseURL string) *Twilio
 		authUser:     authUser,
 		authPassword: authPassword,
 		baseURL:      baseURL,
-		httpClient:   &http.Client{Timeout: 30 * time.Second},
+		httpClient:   &http.Client{Timeout: twilioRequestTimeout},
 	}
 }
 
-// SendMessage sends an SMS using the Twilio REST API
+// SendMessage sends an SMS using the Twilio REST API with retries on 5xx, 429, and transient errors.
 func (t *TwilioHTTPClient) SendMessage(to, from, body string) error {
 	apiURL := fmt.Sprintf("%s/2010-04-01/Accounts/%s/Messages.json", t.baseURL, t.accountSid)
-
 	data := url.Values{}
 	data.Set("To", to)
 	data.Set("From", from)
 	data.Set("Body", body)
+	encoded := data.Encode()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
+	var lastErr error
+	backoff := []time.Duration{0, time.Second, 2 * time.Second}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(data.Encode()))
-	if err != nil {
-		return fmt.Errorf("twilio: failed to create HTTP request: %w", err)
-	}
-
-	req.SetBasicAuth(t.authUser, t.authPassword)
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	resp, err := t.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("twilio: failed to send HTTP request: %w", err)
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			slog.Error("twilio: failed to close response body", "error", err)
+	for attempt := 0; attempt < twilioMaxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(backoff[attempt])
 		}
-	}()
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		ctx, cancel := context.WithTimeout(context.Background(), twilioRequestTimeout)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(encoded))
+		if err != nil {
+			cancel()
+			return fmt.Errorf("twilio: failed to create HTTP request: %w", err)
+		}
+		req.SetBasicAuth(t.authUser, t.authPassword)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		resp, err := t.httpClient.Do(req)
+		cancel()
+		if err != nil {
+			lastErr = fmt.Errorf("twilio: failed to send HTTP request: %w", err)
+			if isRetryableNetError(err) {
+				continue
+			}
+			return lastErr
+		}
+
 		respBody, readErr := io.ReadAll(resp.Body)
+		_ = resp.Body.Close()
 		if readErr != nil {
-			return fmt.Errorf("twilio: API error (status %d), failed to read error response", resp.StatusCode)
+			lastErr = fmt.Errorf("twilio: failed to read response: %w", readErr)
+			continue
 		}
-		return fmt.Errorf("twilio: API error (status %d): %s", resp.StatusCode, string(respBody))
-	}
 
-	return nil
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
+
+		lastErr = fmt.Errorf("twilio: API error (status %d): %s", resp.StatusCode, string(respBody))
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+			continue
+		}
+		return lastErr
+	}
+	return lastErr
+}
+
+func isRetryableNetError(err error) bool {
+	var netErr interface{ Timeout() bool }
+	return errors.As(err, &netErr) && netErr.Timeout() || errors.Is(err, context.DeadlineExceeded)
 }

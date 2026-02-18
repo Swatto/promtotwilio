@@ -80,9 +80,19 @@ else
     fail "GET / returns 'ping'" "ping" "$RESPONSE"
 fi
 
-# Test 2: GET /health returns valid JSON with status "ok"
+# Test 2: GET /metrics returns Prometheus format
 echo ""
-echo "Test 2: GET /health should return JSON with status 'ok'"
+echo "Test 2: GET /metrics should return Prometheus counters"
+METRICS_RESPONSE=$(curl -sf "$APP_URL/metrics")
+if echo "$METRICS_RESPONSE" | grep -q "promtotwilio_alerts_processed_total"; then
+    pass "GET /metrics returns promtotwilio_alerts_processed_total"
+else
+    fail "GET /metrics returns Prometheus counters" "promtotwilio_alerts_processed_total" "Metric not found"
+fi
+
+# Test 3: GET /health returns valid JSON with status "ok"
+echo ""
+echo "Test 3: GET /health should return JSON with status 'ok'"
 RESPONSE=$(curl -sf "$APP_URL/health")
 STATUS=$(echo "$RESPONSE" | jq -r '.status' 2>/dev/null)
 VERSION=$(echo "$RESPONSE" | jq -r '.version' 2>/dev/null)
@@ -94,9 +104,9 @@ else
     fail "GET /health returns valid JSON" "status=ok, version present" "status=$STATUS, version=$VERSION"
 fi
 
-# Test 3: POST /send with valid payload succeeds
+# Test 4: POST /send with valid payload succeeds
 echo ""
-echo "Test 3: POST /send with valid Prometheus alert payload"
+echo "Test 4: POST /send with valid Prometheus alert payload"
 PAYLOAD='{
     "version": "4",
     "status": "firing",
@@ -124,9 +134,9 @@ else
     echo "  Response: $RESPONSE"
 fi
 
-# Test 4: POST /send with multiple receivers
+# Test 5: POST /send with multiple receivers
 echo ""
-echo "Test 4: POST /send with multiple receivers"
+echo "Test 5: POST /send with multiple receivers"
 HTTP_CODE=$(curl -sf -o /tmp/send_response_multi.json -w "%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
@@ -145,9 +155,9 @@ else
     echo "  Response: $RESPONSE"
 fi
 
-# Test 5: POST /send without receiver returns 400
+# Test 6: POST /send without receiver returns 400
 echo ""
-echo "Test 5: POST /send without receiver should return 400"
+echo "Test 6: POST /send without receiver should return 400"
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
@@ -160,9 +170,9 @@ else
     fail "POST /send without receiver returns 400" "400" "$HTTP_CODE"
 fi
 
-# Test 6: POST /send with wrong content-type returns 406
+# Test 7: POST /send with wrong content-type returns 406
 echo ""
-echo "Test 6: POST /send with wrong Content-Type should return 406"
+echo "Test 7: POST /send with wrong Content-Type should return 406"
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST \
     -H "Content-Type: text/plain" \
@@ -175,11 +185,11 @@ else
     fail "POST /send with wrong Content-Type returns 406" "406" "$HTTP_CODE"
 fi
 
-# Test 7: POST /send with resolved status behavior check
+# Test 8: POST /send with resolved status behavior check
 # Note: This test checks behavior based on SEND_RESOLVED env var
 # Since we're running with SEND_RESOLVED=true in e2e, resolved alerts should be sent
 echo ""
-echo "Test 7: POST /send with resolved status (checking SEND_RESOLVED behavior)"
+echo "Test 8: POST /send with resolved status (checking SEND_RESOLVED behavior)"
 RESOLVED_PAYLOAD='{
     "version": "4",
     "status": "resolved",
@@ -216,6 +226,50 @@ else
     fi
 fi
 
+# Test 9: Prometheus scrapes promtotwilio and sees correct metric values
+# By end of Test 8 we have 3 processed batches (tests 4,5,8) and 4 SMS (1+2+1).
+# Tests 6,7 fail validation (400/406) before reaching the processing stage.
+echo ""
+echo "Test 9: Prometheus scrapes promtotwilio /metrics and sees correct numbers"
+MIN_ALERTS_PROCESSED=3
+MIN_SMS_SENT=4
+MIN_SMS_FAILED=0
+echo "  Minimum expected from Part 1: alerts_processed>=$MIN_ALERTS_PROCESSED, sms_sent>=$MIN_SMS_SENT, sms_failed>=$MIN_SMS_FAILED"
+echo "  Waiting for Prometheus to scrape promtotwilio (up to 15s)..."
+PROM_HAS_METRICS=""
+for _ in $(seq 1 15); do
+    PROM_QUERY=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_alerts_processed_total" 2>/dev/null || echo "{}")
+    PROM_RESULT_COUNT=$(echo "$PROM_QUERY" | jq -r '.data.result | length' 2>/dev/null || echo "0")
+    if [ "$PROM_RESULT_COUNT" -gt 0 ] 2>/dev/null; then
+        PROM_HAS_METRICS=1
+        break
+    fi
+    sleep 1
+done
+
+if [ -z "$PROM_HAS_METRICS" ]; then
+    fail "Prometheus scrapes promtotwilio metrics" "query returns at least one result" "no result after 15s"
+else
+    PROM_SEND_REQ=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_alerts_processed_total" | jq -r '.data.result[0].value[1]' 2>/dev/null | tr -d '"')
+    PROM_SMS_SENT=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_sms_sent_total" | jq -r '.data.result[0].value[1]' 2>/dev/null | tr -d '"')
+    PROM_SMS_FAILED=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_sms_failed_total" | jq -r '.data.result[0].value[1]' 2>/dev/null | tr -d '"')
+    PROM_SEND_REQ=${PROM_SEND_REQ:-0}
+    PROM_SMS_SENT=${PROM_SMS_SENT:-0}
+    PROM_SMS_FAILED=${PROM_SMS_FAILED:-0}
+    # Prometheus may return floats (e.g. 5.0); strip to int for comparison
+    PROM_SEND_REQ=${PROM_SEND_REQ%%.*}
+    PROM_SMS_SENT=${PROM_SMS_SENT%%.*}
+    PROM_SMS_FAILED=${PROM_SMS_FAILED%%.*}
+    echo "  Prometheus scraped metrics: alerts_processed=$PROM_SEND_REQ, sms_sent=$PROM_SMS_SENT, sms_failed=$PROM_SMS_FAILED"
+
+    if [ "${PROM_SEND_REQ:-0}" -ge "$MIN_ALERTS_PROCESSED" ] 2>/dev/null && [ "${PROM_SMS_SENT:-0}" -ge "$MIN_SMS_SENT" ] 2>/dev/null && [ "${PROM_SMS_FAILED:-0}" -ge "$MIN_SMS_FAILED" ] 2>/dev/null; then
+        pass "Prometheus sees correct promtotwilio metric values (>= minimum from Part 1)"
+        echo "  Prometheus values meet minimum expected from tests 4,5,7,8"
+    else
+        fail "Prometheus sees correct promtotwilio metric values" "alerts_processed>=$MIN_ALERTS_PROCESSED, sent>=$MIN_SMS_SENT, failed>=$MIN_SMS_FAILED" "PROM alerts_processed=$PROM_SEND_REQ, sent=$PROM_SMS_SENT, failed=$PROM_SMS_FAILED"
+    fi
+fi
+
 echo ""
 echo "========================================="
 echo "Part 2: Resolved Alerts Tests (with SEND_RESOLVED enabled)"
@@ -225,9 +279,9 @@ echo "========================================="
 # Note: This test assumes the service is running with SEND_RESOLVED=true
 # We'll test both scenarios
 
-# Test 8: Test resolved alert with SEND_RESOLVED (if enabled via env var)
+# Test 10: Test resolved alert with SEND_RESOLVED (if enabled via env var)
 echo ""
-echo "Test 8: Testing resolved alert behavior"
+echo "Test 10: Testing resolved alert behavior"
 # First, check if we can send a resolved alert and see if it's processed
 # This will work if SEND_RESOLVED=true, otherwise it will be skipped
 RESOLVED_PAYLOAD_ENABLED='{
@@ -289,9 +343,9 @@ echo ""
 echo "Clearing mock-twilio message store..."
 curl -sf -X DELETE "$MOCK_TWILIO_URL/messages" || true
 
-# Test 9: AlertManager webhook integration
+# Test 11: AlertManager webhook integration
 echo ""
-echo "Test 7: AlertManager sends alert to promtotwilio which sends SMS"
+echo "Test 11: AlertManager sends alert to promtotwilio which sends SMS"
 
 # Inject an alert via AlertManager's API
 ALERT_PAYLOAD='[
@@ -372,9 +426,9 @@ curl -sf -X POST -H "Content-Type: application/json" \
 echo "Waiting for Prometheus to scrape healthy state (5s)..."
 sleep 5
 
-# Test 10: Full Prometheus alert cycle - Trigger firing alert
+# Test 12: Full Prometheus alert cycle - Trigger firing alert
 echo ""
-echo "Test 10: Full Prometheus alert cycle - Triggering firing alert"
+echo "Test 12: Full Prometheus alert cycle - Triggering firing alert"
 
 # Set mock-exporter to unhealthy state to trigger alert
 echo "  Setting mock-exporter to unhealthy state (alert_trigger=1)..."
@@ -417,9 +471,9 @@ else
     fi
 fi
 
-# Test 11: Full Prometheus alert cycle - Resolve alert
+# Test 13: Full Prometheus alert cycle - Resolve alert
 echo ""
-echo "Test 11: Full Prometheus alert cycle - Resolving alert"
+echo "Test 13: Full Prometheus alert cycle - Resolving alert"
 
 # Clear mock-twilio before resolved test
 curl -sf -X DELETE "$MOCK_TWILIO_URL/messages" || true
@@ -468,9 +522,9 @@ else
     fi
 fi
 
-# Test 12: Verify Prometheus metrics endpoint is working
+# Test 14: Verify Prometheus metrics endpoint is working
 echo ""
-echo "Test 12: Verify mock-exporter /metrics endpoint"
+echo "Test 14: Verify mock-exporter /metrics endpoint"
 METRICS_RESPONSE=$(curl -sf "$MOCK_EXPORTER_URL/metrics")
 if echo "$METRICS_RESPONSE" | grep -q "test_alert_trigger"; then
     pass "Mock exporter /metrics endpoint returns test_alert_trigger metric"
@@ -479,9 +533,9 @@ else
     fail "Mock exporter /metrics" "Contains test_alert_trigger" "Metric not found"
 fi
 
-# Test 13: Verify Prometheus has scraped the mock-exporter
+# Test 15: Verify Prometheus has scraped the mock-exporter
 echo ""
-echo "Test 13: Verify Prometheus has scraped mock-exporter"
+echo "Test 15: Verify Prometheus has scraped mock-exporter"
 PROM_QUERY_RESPONSE=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=test_alert_trigger")
 PROM_STATUS=$(echo "$PROM_QUERY_RESPONSE" | jq -r '.status' 2>/dev/null)
 PROM_RESULT_COUNT=$(echo "$PROM_QUERY_RESPONSE" | jq -r '.data.result | length' 2>/dev/null)
@@ -505,9 +559,9 @@ echo "========================================="
 # tight loop; regardless of how many tokens remain in the current window, we are
 # guaranteed to see both 200s and 429s.
 
-# Test 14: Verify rate limiting kicks in after the limit is exceeded
+# Test 16: Verify rate limiting kicks in after the limit is exceeded
 echo ""
-echo "Test 14: POST /send rate limiting (RATE_LIMIT=30)"
+echo "Test 16: POST /send rate limiting (RATE_LIMIT=30)"
 RATE_PAYLOAD='{"version":"4","status":"firing","alerts":[{"annotations":{"summary":"Rate limit test"}}]}'
 GOT_200=0
 GOT_429=0
@@ -533,9 +587,9 @@ else
     fail "Rate limiting enforced on POST /send" "At least 1 accepted and 1 rejected" "200s=$GOT_200, 429s=$GOT_429"
 fi
 
-# Test 15: Verify 429 response body
+# Test 17: Verify 429 response body
 echo ""
-echo "Test 15: Rate limited response returns 429 with correct body"
+echo "Test 17: Rate limited response returns 429 with correct body"
 HTTP_CODE=$(curl -s -o /tmp/rate_limit_body.txt -w "%{http_code}" \
     -X POST \
     -H "Content-Type: application/json" \
