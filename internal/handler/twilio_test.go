@@ -155,6 +155,7 @@ func TestNew_WithAuthToken(t *testing.T) {
 	// Verify handler was created
 	if h == nil {
 		t.Fatal("expected handler, got nil")
+		return
 	}
 	if h.Config != cfg {
 		t.Error("expected config to be set")
@@ -177,6 +178,7 @@ func TestNew_WithAPIKey(t *testing.T) {
 	// Verify handler was created
 	if h == nil {
 		t.Fatal("expected handler, got nil")
+		return
 	}
 	if h.Config != cfg {
 		t.Error("expected config to be set")
