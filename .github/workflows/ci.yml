@@ -21,8 +21,8 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  test:
-    name: Test
+  check:
+    name: Check
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -33,6 +33,11 @@ jobs:
         with:
           go-version: "1.26"
           cache: false
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
 
       - name: Run tests with coverage
         id: tests
@@ -61,18 +66,7 @@ jobs:
               echo ''
               echo '| Package | Coverage |'
               echo '|---------|----------|'
-              go test -cover ./... 2>&1 | awk -F'\t' '{
-                pkg = $2
-                gsub(/^ +| +$/, "", pkg)
-                cov = ""
-                for (i=1; i<=NF; i++) {
-                  if ($i ~ /coverage:/) {
-                    split($i, parts, " ")
-                    cov = parts[2]
-                  }
-                }
-                if (pkg != "" && cov != "") printf "| `%s` | %s |\n", pkg, cov
-              }'
+              jq -r 'select(.Action=="output" and .Output != null and (.Output | test("^coverage: [0-9]"))) | "| `\(.Package)` | \(.Output | capture("(?<pct>[0-9.]+%)").pct) |"' test-results.json
             fi
             echo ''
             echo '<details><summary>Per-function breakdown</summary>'
@@ -87,44 +81,12 @@ jobs:
         if: steps.tests.outcome == 'failure'
         run: exit 1
 
-  lint:
-    name: Lint
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          cache: false
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-
-  build:
-    name: Build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          cache: false
-
       - name: Build
         run: make build
 
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [build]
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -172,7 +134,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [test, lint, build, e2e]
+    needs: [check, e2e]
     if: github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
@@ -243,14 +205,12 @@ jobs:
   docker:
     name: Docker
     runs-on: ubuntu-latest
-    needs: [test, lint, build, e2e, release]
+    needs: [check, e2e, release]
     # Only run for: push to main (prerelease) or workflow_dispatch (official release)
     # Skip for: pull_request
     if: |
       always() &&
-      needs.test.result == 'success' &&
-      needs.lint.result == 'success' &&
-      needs.build.result == 'success' &&
+      needs.check.result == 'success' &&
       needs.e2e.result == 'success' &&
       (needs.release.result == 'success' || needs.release.result == 'skipped') &&
       github.event_name != 'pull_request'
