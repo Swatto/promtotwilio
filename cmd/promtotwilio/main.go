@@ -67,7 +67,8 @@ func printBanner(port string, cfg *handler.Config) {
 	fmt.Println()
 }
 
-func main() {
+// loadConfig reads environment variables and returns the application config and port.
+func loadConfig() (*handler.Config, string) {
 	maxMessageLength := 150
 	if maxLenStr := os.Getenv("MAX_MESSAGE_LENGTH"); maxLenStr != "" {
 		if parsedLen, err := strconv.Atoi(maxLenStr); err == nil && parsedLen > 0 {
@@ -97,14 +98,21 @@ func main() {
 		LogFormat:        os.Getenv("LOG_FORMAT"),
 	}
 
-	if err := cfg.Validate(); err != nil {
-		slog.Error("startup: invalid configuration", "error", err)
-		os.Exit(1)
-	}
-
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "9090"
+	}
+
+	return cfg, port
+}
+
+// run contains the application lifecycle. It returns an error instead of
+// calling os.Exit so that the logic is testable.
+func run(ctx context.Context) error {
+	cfg, port := loadConfig()
+
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("startup: invalid configuration: %w", err)
 	}
 
 	h := handler.New(cfg, Version)
@@ -119,13 +127,10 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Channel to receive server errors
 	serverErr := make(chan error, 1)
 
-	// Print startup banner
 	printBanner(port, cfg)
 
-	// Start server in a goroutine
 	go func() {
 		slog.Info("Server started successfully", "app", AppName, "version", Version, "port", port)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -133,26 +138,30 @@ func main() {
 		}
 	}()
 
-	// Wait for interrupt signal or server error
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
 	case err := <-serverErr:
-		slog.Error("startup: failed to start HTTP server", "error", err)
-		os.Exit(1)
-	case <-quit:
+		return fmt.Errorf("startup: failed to start HTTP server: %w", err)
+	case <-ctx.Done():
 		slog.Info("Shutting down server...")
 	}
 
-	// Give outstanding requests 10 seconds to complete
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("shutdown: server forced to terminate", "error", err)
-		os.Exit(1)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("shutdown: server forced to terminate: %w", err)
 	}
 
 	slog.Info("Server stopped gracefully")
+	return nil
+}
+
+func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	if err := run(ctx); err != nil {
+		slog.Error("fatal", "error", err)
+		os.Exit(1)
+	}
 }
