@@ -495,6 +495,62 @@ else
     fail "Prometheus scrape" "status=success, results > 0" "status=$PROM_STATUS, results=$PROM_RESULT_COUNT"
 fi
 
+echo ""
+echo "========================================="
+echo "Part 5: Rate Limiting Tests"
+echo "========================================="
+
+# The promtotwilio service is started with RATE_LIMIT=30.
+# By this point the Prometheus cycle tests have taken well over a minute, so the
+# rate limit window has reset at least once. We fire more than 30 requests in a
+# tight loop; regardless of how many tokens remain in the current window, we are
+# guaranteed to see both 200s and 429s.
+
+# Test 14: Verify rate limiting kicks in after the limit is exceeded
+echo ""
+echo "Test 14: POST /send rate limiting (RATE_LIMIT=30)"
+RATE_PAYLOAD='{"version":"4","status":"firing","alerts":[{"annotations":{"summary":"Rate limit test"}}]}'
+GOT_200=0
+GOT_429=0
+
+for i in $(seq 1 35); do
+    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        -X POST \
+        -H "Content-Type: application/json" \
+        -d "$RATE_PAYLOAD" \
+        "$APP_URL/send?receiver=%2B1234567890")
+    if [ "$HTTP_CODE" = "200" ]; then
+        GOT_200=$((GOT_200 + 1))
+    elif [ "$HTTP_CODE" = "429" ]; then
+        GOT_429=$((GOT_429 + 1))
+    fi
+done
+
+if [ "$GOT_200" -gt 0 ] && [ "$GOT_429" -gt 0 ]; then
+    pass "Rate limiting enforced on POST /send"
+    echo "  Requests accepted (200): $GOT_200"
+    echo "  Requests rejected (429): $GOT_429"
+else
+    fail "Rate limiting enforced on POST /send" "At least 1 accepted and 1 rejected" "200s=$GOT_200, 429s=$GOT_429"
+fi
+
+# Test 15: Verify 429 response body
+echo ""
+echo "Test 15: Rate limited response returns 429 with correct body"
+HTTP_CODE=$(curl -s -o /tmp/rate_limit_body.txt -w "%{http_code}" \
+    -X POST \
+    -H "Content-Type: application/json" \
+    -d "$RATE_PAYLOAD" \
+    "$APP_URL/send?receiver=%2B1234567890")
+
+BODY=$(cat /tmp/rate_limit_body.txt 2>/dev/null)
+
+if [ "$HTTP_CODE" = "429" ] && echo "$BODY" | grep -q "rate limit exceeded"; then
+    pass "Rate limited response returns 429 with 'rate limit exceeded' message"
+else
+    fail "Rate limited response" "HTTP 429 with 'rate limit exceeded'" "HTTP $HTTP_CODE, body=$BODY"
+fi
+
 # Summary
 echo ""
 echo "========================================="

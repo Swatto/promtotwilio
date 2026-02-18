@@ -20,6 +20,7 @@ services:
       PORT: "9090"
       TWILIO_BASE_URL: "http://mock-twilio:8080"
       SEND_RESOLVED: "true"
+      RATE_LIMIT: "30"
     depends_on:
       - mock-twilio
 
