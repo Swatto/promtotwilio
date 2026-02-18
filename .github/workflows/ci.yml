@@ -12,6 +12,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -30,10 +34,57 @@ jobs:
           go-version: "1.26"
 
       - name: Run tests with coverage
-        run: make coverage
+        id: tests
+        continue-on-error: true
+        run: go test -race -coverprofile=coverage.out -json ./... > test-results.json
 
-      - name: Display coverage
-        run: go tool cover -func=coverage.out
+      - name: Test summary
+        if: always() && steps.tests.outcome != 'skipped'
+        run: |
+          TOTAL_PASS=$(jq -r 'select(.Action=="pass" and .Test!=null and .Test!="") | .Test' test-results.json | wc -l | tr -d ' ')
+          TOTAL_FAIL=$(jq -r 'select(.Action=="fail" and .Test!=null and .Test!="") | .Test' test-results.json | wc -l | tr -d ' ')
+          {
+            if [ "${{ steps.tests.outcome }}" = "failure" ]; then
+              echo '## :x: Tests Failed'
+              echo ''
+              echo "**${TOTAL_PASS} passed, ${TOTAL_FAIL} failed**"
+              echo ''
+              echo '| Package | Test |'
+              echo '|---------|------|'
+              jq -r 'select(.Action=="fail" and .Test!=null and .Test!="") | "| `\(.Package)` | `\(.Test)` |"' test-results.json
+            else
+              TOTAL=$(go tool cover -func=coverage.out | awk '/^total:/{print $NF}')
+              echo "## :white_check_mark: Tests Passed — Coverage: ${TOTAL}"
+              echo ''
+              echo "${TOTAL_PASS} tests passed"
+              echo ''
+              echo '| Package | Coverage |'
+              echo '|---------|----------|'
+              go test -cover ./... 2>&1 | awk -F'\t' '{
+                pkg = $2
+                gsub(/^ +| +$/, "", pkg)
+                cov = ""
+                for (i=1; i<=NF; i++) {
+                  if ($i ~ /coverage:/) {
+                    split($i, parts, " ")
+                    cov = parts[2]
+                  }
+                }
+                if (pkg != "" && cov != "") printf "| `%s` | %s |\n", pkg, cov
+              }'
+            fi
+            echo ''
+            echo '<details><summary>Per-function breakdown</summary>'
+            echo ''
+            echo '```'
+            go tool cover -func=coverage.out
+            echo '```'
+            echo '</details>'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
 
   lint:
     name: Lint
@@ -78,8 +129,48 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - name: Build E2E images with cache
+        run: |
+          docker buildx bake -f docker-compose.e2e.yml --load \
+            --set '*.cache-from=type=gha' \
+            --set '*.cache-to=type=gha,mode=max'
+
       - name: Run E2E tests
-        run: make e2e
+        id: e2e
+        continue-on-error: true
+        run: |
+          docker compose -f docker-compose.e2e.yml run --rm e2e-tests 2>&1 | tee /tmp/e2e-output.txt
+
+      - name: E2E test summary
+        if: always() && steps.e2e.outcome != 'skipped'
+        run: |
+          {
+            echo '## E2E Test Results'
+            echo ''
+            CLEAN=$(sed 's/\x1b\[[0-9;]*m//g' /tmp/e2e-output.txt)
+            PASSED=$(echo "$CLEAN" | grep '^Passed:' | grep -o '[0-9]*' || echo "0")
+            FAILED=$(echo "$CLEAN" | grep '^Failed:' | grep -o '[0-9]*' || echo "0")
+            if [ "${{ steps.e2e.outcome }}" = "success" ]; then
+              echo ':white_check_mark: **All tests passed** ('"$PASSED"' passed)'
+            else
+              echo ':x: **Tests failed** ('"$PASSED"' passed, '"$FAILED"' failed)'
+            fi
+            echo ''
+            echo '<details><summary>Full output</summary>'
+            echo ''
+            echo '```'
+            echo "$CLEAN"
+            echo '```'
+            echo '</details>'
+          } >> $GITHUB_STEP_SUMMARY
+
+      - name: Clean up
+        if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v --remove-orphans
+
+      - name: Fail if tests failed
+        if: steps.e2e.outcome == 'failure'
+        run: exit 1
 
   release:
     name: Release
