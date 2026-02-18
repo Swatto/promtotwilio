@@ -8,13 +8,9 @@
 
 ## Code Style
 
-- Run `make lint` before submitting PRs (uses golangci-lint from `go.mod` tool directive)
+- Run `make lint` before submitting PRs
 - All tests must pass: `make test`
 - E2E tests should pass: `make e2e` (requires Docker)
-
-## Tool dependencies and the build
-
-Dependencies added via the `tool` directive (e.g. `golangci-lint`) are only used at development time. The Go build includes only packages that your code imports, so **tool-only modules are not compiled into the binary**. To verify: run `make verify-build-deps` (checks that no tool package is in the build dependency tree and that the built binary’s embedded module list only contains the main module).
 
 ## Pull Requests
 

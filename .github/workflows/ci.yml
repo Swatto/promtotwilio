@@ -48,7 +48,9 @@ jobs:
           go-version: "1.26"
 
       - name: Run golangci-lint
-        run: go tool golangci-lint run
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: latest
 
   build:
     name: Build
@@ -64,9 +66,6 @@ jobs:
 
       - name: Build
         run: make build
-
-      - name: Verify build deps (no tool deps in binary)
-        run: make verify-build-deps
 
   e2e:
     name: E2E Tests

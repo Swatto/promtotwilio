@@ -54,18 +54,8 @@ fmt: ## Format code
 vet: ## Run go vet
 	$(GOVET) ./...
 
-lint: ## Run golangci-lint (uses version from go.mod tool directive)
-	go tool golangci-lint run
-
-verify-build-deps: ## Ensure tool-only deps (e.g. golangci-lint) are not in the build
-	@echo "Checking build dependency tree..."
-	@if go list -deps ./cmd/promtotwilio | grep -q golangci; then \
-		echo "ERROR: a golangci package is in the build dependency tree"; exit 1; fi
-	@echo "Building binary and checking embedded module list..."
-	@$(GOBUILD) -o $(BINARY_NAME) ./cmd/promtotwilio
-	@echo "Modules embedded in binary (should only list main module):"
-	@go version -m $(BINARY_NAME) | grep '^	mod ' || true
-	@echo "OK: tool dependencies are not part of the build result"
+lint: ## Run golangci-lint
+	golangci-lint run
 
 #-----------------------------------------------------------------------------
 # Docker targets
@@ -122,4 +112,4 @@ check: fmt vet lint test ## Run all checks (fmt, vet, lint, test)
 help: ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
-.PHONY: all build build-all test coverage fmt vet lint verify-build-deps build-docker clean re run stop e2e dev check help
+.PHONY: all build build-all test coverage fmt vet lint build-docker clean re run stop e2e dev check help
