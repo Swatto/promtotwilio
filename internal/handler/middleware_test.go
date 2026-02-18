@@ -85,7 +85,7 @@ func TestRateLimiter_Wrap_RejectsOverLimit(t *testing.T) {
 func TestLogRequests_NginxFormat(t *testing.T) {
 	h := LogRequests("nginx", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("hello"))
+		_, _ = w.Write([]byte("hello"))
 	}))
 
 	w := httptest.NewRecorder()
@@ -102,7 +102,7 @@ func TestLogRequests_NginxFormat(t *testing.T) {
 func TestLogRequests_SimpleFormat(t *testing.T) {
 	h := LogRequests("simple", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 
 	w := httptest.NewRecorder()
@@ -133,8 +133,8 @@ func TestResponseRecorder_TracksBytes(t *testing.T) {
 	w := httptest.NewRecorder()
 	rec := &responseRecorder{ResponseWriter: w}
 
-	rec.Write([]byte("abc"))
-	rec.Write([]byte("de"))
+	_, _ = rec.Write([]byte("abc"))
+	_, _ = rec.Write([]byte("de"))
 
 	if rec.bytes != 5 {
 		t.Fatalf("expected 5 bytes, got %d", rec.bytes)
