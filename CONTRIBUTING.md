@@ -3,7 +3,7 @@
 ## Development Setup
 
 1. Clone the repository
-2. Ensure Go 1.23+ is installed
+2. Ensure Go 1.26+ is installed
 3. Run `make check` to verify everything works
 
 ## Code Style
