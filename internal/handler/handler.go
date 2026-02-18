@@ -158,9 +158,8 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		for i := range payload.Alerts {
 			alert := &payload.Alerts[i]
 			for _, receiver := range receivers {
-				wg.Add(1)
-				go func(rcv string, a *Alert) {
-					defer wg.Done()
+				rcv, a := receiver, alert
+				wg.Go(func() {
 					sendErr := h.sendMessage(rcv, a, status)
 					mu.Lock()
 					defer mu.Unlock()
@@ -170,7 +169,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 					} else {
 						sent++
 					}
-				}(receiver, alert)
+				})
 			}
 		}
 
