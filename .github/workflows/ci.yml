@@ -256,7 +256,7 @@ jobs:
       - name: Extract metadata for Docker (official release)
         if: github.event_name == 'workflow_dispatch'
         id: meta-release
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
@@ -269,7 +269,7 @@ jobs:
       - name: Extract metadata for Docker (prerelease)
         if: github.event_name == 'push'
         id: meta-prerelease
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
