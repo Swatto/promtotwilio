@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.5-alpine3.24 AS builder
 
 WORKDIR /app
 COPY go.mod ./
@@ -6,7 +6,7 @@ COPY main.go ./
 
 RUN go build -o mock-exporter .
 
-FROM alpine:3.21
+FROM alpine:3.24
 
 COPY --from=builder /app/mock-exporter /mock-exporter
 
