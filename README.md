@@ -1,7 +1,7 @@
 # promtotwilio
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE.txt)
-[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go&logoColor=white)](https://go.dev)
+[![Go](https://img.shields.io/badge/Go-1.27+-00ADD8?logo=go&logoColor=white)](https://go.dev)
 
 **Send Prometheus alerts as SMS via Twilio.** Get notified on your phone when things go wrong.
 
@@ -258,7 +258,7 @@ This project uses **only Go's standard library** — no external dependencies. T
 
 ### Prerequisites
 
-- Go 1.26+
+- Go 1.27+
 - Docker (optional)
 
 ### Commands
