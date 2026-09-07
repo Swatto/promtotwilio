@@ -1,4 +1,4 @@
-FROM golang:1.27.0-alpine3.24 AS builder
+FROM golang:1.27.1-alpine3.24 AS builder
 
 RUN mkdir /user && \
     echo 'nobody:x:65534:65534:nobody:/:' > /user/passwd && \
