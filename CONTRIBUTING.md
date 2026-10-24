@@ -12,6 +12,21 @@
 - All tests must pass: `make test`
 - E2E tests should pass: `make e2e` (requires Docker)
 
+## Security
+
+The Security workflow runs govulncheck on every pull request, on pushes to
+`main` and daily. It scans the source and, in binary mode, the binary inside
+the Docker image, because the Dockerfile pins its own Go toolchain and the
+image can lag behind the Go version CI uses. The daily run scans the
+published `latest` image and the latest release binary, and opens a
+"Security audit failing" issue when it fails.
+
+When it fails on a standard library advisory, bump the `golang` image in
+the Dockerfiles to the fixed Go patch release and cut a new release.
+
+Run it locally with `make vuln` (source) or `make vuln-image` (Docker
+image binary).
+
 ## Pull Requests
 
 1. Fork the repo and create your branch from `main`
