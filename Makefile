@@ -18,6 +18,7 @@ GOVET = $(GOCMD) vet
 BINARY_NAME = promtotwilio
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
+GOVULNCHECK = golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
 #-----------------------------------------------------------------------------
 # default target
@@ -56,6 +57,17 @@ vet: ## Run go vet
 
 lint: ## Run golangci-lint
 	golangci-lint run
+
+vuln: ## Run govulncheck against the source with the local Go toolchain
+	$(GOCMD) run $(GOVULNCHECK) ./...
+
+vuln-image: ## Run govulncheck against the binary in the Docker image
+vuln-image: build-docker
+	@id=$$(docker create $(CONTAINER_NAME):latest) && \
+	docker cp $$id:/promtotwilio ./$(BINARY_NAME)-image && \
+	docker rm $$id >/dev/null && \
+	$(GOCMD) run $(GOVULNCHECK) -mode binary ./$(BINARY_NAME)-image; \
+	EXIT_CODE=$$?; rm -f ./$(BINARY_NAME)-image; exit $$EXIT_CODE
 
 #-----------------------------------------------------------------------------
 # Docker targets
@@ -112,4 +124,4 @@ check: fmt vet lint test ## Run all checks (fmt, vet, lint, test)
 help: ## Show this help.
 	@fgrep -h "##" $(MAKEFILE_LIST) | fgrep -v fgrep | sed -e 's/\\$$//' | sed -e 's/##//'
 
-.PHONY: all build build-all test coverage fmt vet lint build-docker clean re run stop e2e dev check help
+.PHONY: all build build-all test coverage fmt vet lint vuln vuln-image build-docker clean re run stop e2e dev check help

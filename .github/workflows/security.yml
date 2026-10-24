@@ -1,0 +1,96 @@
+# Security audit: known Go vulnerabilities in what we actually ship.
+#
+# The Docker image pins its own Go toolchain in the Dockerfile, separately
+# from the "1.27" CI uses, so a source scan alone can pass while the image
+# still carries an old standard library. govulncheck therefore also scans
+# the built binaries in binary mode, which reads the Go version they were
+# compiled with.
+#
+# Runs on every pull request and push to main, and daily, because new
+# advisories are published without any change here. Pull requests and
+# pushes scan an image built from the branch; scheduled and manual runs
+# scan the published ghcr.io/swatto/promtotwilio:latest image and the
+# latest GitHub release binary. A failed scheduled run opens a
+# "Security audit failing" issue, or comments on the open one.
+name: Security
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+# A new push to a pull request cancels its previous run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+permissions: {}
+env:
+  GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.9.0
+jobs:
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    env:
+      PUBLISHED: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      # Only reports vulnerabilities in code the binary actually calls.
+      - name: Scan the source
+        run: go run "$GOVULNCHECK" ./...
+
+      - name: Build the image (not pushed)
+        if: env.PUBLISHED != 'true'
+        run: docker build -t promtotwilio:audit .
+      - name: Pull the published image
+        if: env.PUBLISHED == 'true'
+        run: docker pull --platform linux/amd64 ghcr.io/swatto/promtotwilio:latest
+      - name: Scan the image binary
+        env:
+          IMAGE: ${{ env.PUBLISHED == 'true' && 'ghcr.io/swatto/promtotwilio:latest' || 'promtotwilio:audit' }}
+        run: |
+          id=$(docker create "$IMAGE")
+          docker cp "$id:/promtotwilio" ./promtotwilio-image
+          docker rm "$id"
+          go run "$GOVULNCHECK" -mode binary ./promtotwilio-image
+
+      - name: Scan the latest release binary
+        if: env.PUBLISHED == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release download --pattern promtotwilio-linux-amd64 --output ./promtotwilio-release
+          go run "$GOVULNCHECK" -mode binary ./promtotwilio-release
+
+  report:
+    name: open an issue
+    needs: [govulncheck]
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Security audit failing"
+          open=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue comment "$open" --body "Still failing: $RUN_URL"
+          else
+            gh issue create --title "$title" --body "The scheduled security audit failed: $RUN_URL
+
+          Close this issue once the audit passes again."
+          fi
