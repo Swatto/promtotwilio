@@ -296,7 +296,7 @@ docker pull ghcr.io/swatto/promtotwilio:1       # Latest minor
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and release process.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines and release process, and [SECURITY.md](SECURITY.md) to report a vulnerability.
 
 ---
 
