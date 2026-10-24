@@ -38,24 +38,20 @@ image binary).
 
 ## Releasing
 
-Releases are fully automated via GitHub Actions. **Do not create tags or releases manually.**
+Nobody tags by hand. Commits follow [Conventional Commits](https://www.conventionalcommits.org/)
+(`feat:`, `fix:`, `deps:`, `feat!:` ...). On every push to `main`,
+release-please looks at the commits since the last release and keeps a
+pull request named "chore(main): release x.y.z" up to date: it picks the
+next version, prepends the generated entry to `CHANGELOG.md`, and lists
+what changed. CI (unit, lint, E2E) runs on that pull request like any
+other.
 
-### How to Create a Release
+Merging it creates the tag and the GitHub release, and the Release
+workflow then:
 
-1. Go to **Actions** → **CI** workflow
-2. Click **Run workflow**
-3. Enter version in format `v1.2.3`
-4. Click **Run workflow**
-
-The workflow will:
-- ✅ Run all tests (unit, lint, E2E)
-- ✅ Validate version format
-- ✅ Create and push git tag
-- ✅ Build binaries for all platforms
-- ✅ Create GitHub Release with binaries
-- ✅ Push Docker images with proper tags
-
-### What Gets Created
+- builds the binaries and attaches them to the release
+- builds the image, scans it with Grype (a high or critical finding with
+  a fix stops the release), and pushes it for `amd64` and `arm64`
 
 | Artifact | Examples |
 |----------|----------|
@@ -63,21 +59,10 @@ The workflow will:
 | **Binaries** | `promtotwilio-linux-amd64`, `promtotwilio-darwin-arm64`, etc. |
 | **Docker Tags** | `1.2.3`, `1.2`, `1`, `latest` |
 
-### Why Automation?
+`feat:` bumps the minor version, `fix:`, `perf:` and `deps:` the patch,
+and a `!` or a `BREAKING CHANGE:` footer the major. `chore:`, `ci:`,
+`refactor:` and `test:` alone do not cut a release. To force a specific
+version, add a `Release-As: 2.0.0` footer to a commit.
 
-The automated process prevents common mistakes:
-
-- **Version validation** — Rejects malformed versions like `v1.0` or `1.0.0`
-- **Pre-release testing** — Broken code cannot be released
-- **Consistent builds** — Multi-platform binaries built the same way every time
-- **Proper tagging** — Docker images get all semantic version tags automatically
-
-### Troubleshooting Releases
-
-If a release fails:
-
-1. Check workflow logs in GitHub Actions
-2. Fix the issue (failing tests, lint errors, etc.)
-3. Re-run the workflow with the same version
-
-The workflow handles existing tags gracefully.
+To rebuild the binaries and image for an existing tag, run the Release
+workflow by hand from the Actions tab and give it the tag.
