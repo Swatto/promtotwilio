@@ -252,6 +252,9 @@ func TestRun_StartsAndStops(t *testing.T) {
 		t.Errorf("expected health status 'ok', got %q", health.Status)
 	}
 
+	// Shutdown only treats a connection that never sent a request as idle
+	// after 5s, so drop any spare keep-alive connection the client opened.
+	http.DefaultClient.CloseIdleConnections()
 	cancel()
 
 	select {
