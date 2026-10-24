@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to build the binaries and image for, e.g. v1.9.0
+        description: Existing tag to build the binaries and image for, e.g. v1.10.4
         required: true
 permissions: {}
 jobs:
