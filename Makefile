@@ -18,7 +18,8 @@ GOVET = $(GOCMD) vet
 BINARY_NAME = promtotwilio
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS = -ldflags "-X main.Version=$(VERSION)"
-GOVULNCHECK = golang.org/x/vuln/cmd/govulncheck@v1.9.0
+# golangci-lint and govulncheck versions come from tools/go.mod
+GOTOOL = $(GOCMD) tool -modfile=tools/go.mod
 
 #-----------------------------------------------------------------------------
 # default target
@@ -56,17 +57,17 @@ vet: ## Run go vet
 	$(GOVET) ./...
 
 lint: ## Run golangci-lint
-	golangci-lint run
+	$(GOTOOL) golangci-lint run
 
 vuln: ## Run govulncheck against the source with the local Go toolchain
-	$(GOCMD) run $(GOVULNCHECK) ./...
+	$(GOTOOL) govulncheck ./...
 
 vuln-image: ## Run govulncheck against the binary in the Docker image
 vuln-image: build-docker
 	@id=$$(docker create $(CONTAINER_NAME):latest) && \
 	docker cp $$id:/promtotwilio ./$(BINARY_NAME)-image && \
 	docker rm $$id >/dev/null && \
-	$(GOCMD) run $(GOVULNCHECK) -mode binary ./$(BINARY_NAME)-image; \
+	$(GOTOOL) govulncheck -mode binary ./$(BINARY_NAME)-image; \
 	EXIT_CODE=$$?; rm -f ./$(BINARY_NAME)-image; exit $$EXIT_CODE
 
 #-----------------------------------------------------------------------------

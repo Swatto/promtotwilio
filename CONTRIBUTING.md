@@ -66,3 +66,16 @@ version, add a `Release-As: 2.0.0` footer to a commit.
 
 To rebuild the binaries and image for an existing tag, run the Release
 workflow by hand from the Actions tab and give it the tag.
+
+Dependabot opens weekly pull requests for everything pinned here: Go
+modules, the Go tools in `tools/go.mod` (golangci-lint, govulncheck), the
+GitHub Actions, the Docker images and the E2E compose services. Updates
+to what ships (`go.mod`, the root `Dockerfile`) use `deps(...)` and cut a
+release; the others use `ci(...)` or `test(deps):` and do not. It only
+proposes releases that are at least 7 days old, so a hijacked release has
+time to be caught before it gets here; security updates skip the wait.
+Actions are pinned by commit SHA and images by digest; keep it that way
+when adding one (Dependabot bumps the pin and its version comment
+together), and add a new tool to `tools/go.mod` with
+`go get -tool -modfile=tools/go.mod <module>@<version>` rather than
+writing its version in a workflow.

@@ -29,7 +29,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions: {}
 env:
-  GOVULNCHECK: golang.org/x/vuln/cmd/govulncheck@v1.9.0
+  # The govulncheck version comes from tools/go.mod.
+  GOVULNCHECK: go tool -modfile=tools/go.mod govulncheck
 jobs:
   govulncheck:
     name: govulncheck
@@ -49,7 +50,7 @@ jobs:
 
       # Only reports vulnerabilities in code the binary actually calls.
       - name: Scan the source
-        run: go run "$GOVULNCHECK" ./...
+        run: $GOVULNCHECK ./...
 
       - name: Build the image (not pushed)
         if: env.PUBLISHED != 'true'
@@ -64,7 +65,7 @@ jobs:
           id=$(docker create "$IMAGE")
           docker cp "$id:/promtotwilio" ./promtotwilio-image
           docker rm "$id"
-          go run "$GOVULNCHECK" -mode binary ./promtotwilio-image
+          $GOVULNCHECK -mode binary ./promtotwilio-image
 
       - name: Scan the latest release binary
         if: env.PUBLISHED == 'true'
@@ -73,7 +74,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           gh release download --pattern promtotwilio-linux-amd64 --output ./promtotwilio-release
-          go run "$GOVULNCHECK" -mode binary ./promtotwilio-release
+          $GOVULNCHECK -mode binary ./promtotwilio-release
 
   report:
     name: open an issue

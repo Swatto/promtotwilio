@@ -1,5 +1,12 @@
 # Dependabot configuration
 # https://docs.github.com/en/code-security/dependabot/dependabot-version-updates
+#
+# Commit prefixes decide what release-please does with a merged update:
+# deps(...) is what ships (the binary and its image) and cuts a release;
+# ci(...) and test(...) only touch CI and the E2E setup and do not.
+#
+# Every entry waits 7 days before proposing a new release, so a hijacked
+# release has time to be caught; security updates skip the wait.
 
 version: 2
 updates:
@@ -9,6 +16,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(go):"
     labels:
@@ -16,67 +25,112 @@ updates:
       - "go"
     open-pull-requests-limit: 5
 
-  # GitHub Actions
+  # Docker base image of the shipped image
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps(docker):"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 3
+
+  # Go tools run by CI and the Makefile (golangci-lint, govulncheck)
+  - package-ecosystem: "gomod"
+    directory: "/tools"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "ci(tools):"
+    labels:
+      - "dependencies"
+      - "go"
+    groups:
+      tools:
+        patterns: ["*"]
+    open-pull-requests-limit: 2
+
+  # GitHub Actions, pinned by SHA
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
-      prefix: "deps(actions):"
+      prefix: "ci(actions):"
     labels:
       - "dependencies"
       - "github-actions"
+    groups:
+      actions:
+        patterns: ["*"]
     open-pull-requests-limit: 5
 
-  # Docker base images
+  # Docker images of the E2E services, in one pull request per update
   - package-ecosystem: "docker"
+    directories:
+      - "/test/mock-twilio"
+      - "/test/mock-exporter"
+      - "/test/e2e"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "test(deps):"
+    labels:
+      - "dependencies"
+      - "docker"
+    groups:
+      test-images:
+        patterns: ["*"]
+    open-pull-requests-limit: 2
+
+  # Go modules of the E2E services
+  - package-ecosystem: "gomod"
+    directories:
+      - "/test/mock-twilio"
+      - "/test/mock-exporter"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "test(deps):"
+    labels:
+      - "dependencies"
+      - "go"
+    groups:
+      test-modules:
+        patterns: ["*"]
+    open-pull-requests-limit: 2
+
+  # Prometheus and Alertmanager in docker-compose.e2e.yml
+  - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
-      prefix: "deps(docker):"
+      prefix: "test(deps):"
     labels:
       - "dependencies"
       - "docker"
-    open-pull-requests-limit: 3
-
-  # Docker for mock-twilio test service
-  - package-ecosystem: "docker"
-    directory: "/test/mock-twilio"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "deps(docker):"
-    labels:
-      - "dependencies"
-      - "docker"
+    groups:
+      e2e-services:
+        patterns: ["*"]
     open-pull-requests-limit: 2
-
-  # Docker for e2e tests
-  - package-ecosystem: "docker"
-    directory: "/test/e2e"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "deps(docker):"
-    labels:
-      - "dependencies"
-      - "docker"
-    open-pull-requests-limit: 2
-
-  # Go modules for mock-twilio test service
-  - package-ecosystem: "gomod"
-    directory: "/test/mock-twilio"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-    commit-message:
-      prefix: "deps(go):"
-    labels:
-      - "dependencies"
-      - "go"
-    open-pull-requests-limit: 3
