@@ -12,6 +12,9 @@
 # scan the published ghcr.io/swatto/promtotwilio:latest image and the
 # latest GitHub release binary. A failed scheduled run opens a
 # "Security audit failing" issue, or comments on the open one.
+# A passing scheduled or manual run closes it, since both scan what is
+# published: after the release that fixes it, a manual run closes it
+# without waiting for the next day.
 name: Security
 on:
   push:
@@ -92,5 +95,26 @@ jobs:
           else
             gh issue create --title "$title" --body "The scheduled security audit failed: $RUN_URL
 
-          Close this issue once the audit passes again."
+          It closes itself once a scheduled or manual run passes again."
+          fi
+
+  resolve:
+    name: close the issue
+    needs: [govulncheck]
+    # Scheduled and manual runs scan what is published, so a pass means the
+    # fix has shipped. A pass on a pull request or push only covers the branch.
+    if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      issues: write
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          title="Security audit failing"
+          open=$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number // empty')
+          if [ -n "$open" ]; then
+            gh issue close "$open" --comment "The security audit passes again: $RUN_URL"
           fi
