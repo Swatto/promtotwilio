@@ -9,6 +9,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(go):"
     labels:
@@ -22,6 +24,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(actions):"
     labels:
@@ -35,6 +39,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(docker):"
     labels:
@@ -48,6 +54,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(docker):"
     labels:
@@ -61,6 +69,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(docker):"
     labels:
@@ -74,9 +84,56 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     commit-message:
       prefix: "deps(go):"
     labels:
       - "dependencies"
       - "go"
     open-pull-requests-limit: 3
+
+  # Docker for mock-exporter test service
+  - package-ecosystem: "docker"
+    directory: "/test/mock-exporter"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps(docker):"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 2
+
+  # Go modules for mock-exporter test service
+  - package-ecosystem: "gomod"
+    directory: "/test/mock-exporter"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps(go):"
+    labels:
+      - "dependencies"
+      - "go"
+    open-pull-requests-limit: 3
+
+  # Prometheus and Alertmanager images in the E2E compose file
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps(docker):"
+    labels:
+      - "dependencies"
+      - "docker"
+    open-pull-requests-limit: 2

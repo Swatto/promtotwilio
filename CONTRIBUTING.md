@@ -66,3 +66,11 @@ version, add a `Release-As: 2.0.0` footer to a commit.
 
 To rebuild the binaries and image for an existing tag, run the Release
 workflow by hand from the Actions tab and give it the tag.
+
+Dependabot opens weekly pull requests for Go modules, the GitHub Actions
+and the Docker images, with `deps(...)` prefixes so they land in the
+Dependencies section of the changelog. It only proposes releases that are
+at least 7 days old, so a hijacked release has time to be caught before it
+gets here; security updates skip the wait. Actions are pinned by commit
+SHA and images by digest; keep it that way when adding one (Dependabot
+bumps the pin and its version comment together).
