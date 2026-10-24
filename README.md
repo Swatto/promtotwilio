@@ -287,8 +287,8 @@ make dev
 
 ```bash
 docker pull ghcr.io/swatto/promtotwilio:latest
-docker pull ghcr.io/swatto/promtotwilio:1.0.0   # Specific version
-docker pull ghcr.io/swatto/promtotwilio:1.0     # Latest patch
+docker pull ghcr.io/swatto/promtotwilio:1.9.0   # Specific version
+docker pull ghcr.io/swatto/promtotwilio:1.9     # Latest patch
 docker pull ghcr.io/swatto/promtotwilio:1       # Latest minor
 ```
 
