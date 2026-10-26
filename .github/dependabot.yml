@@ -48,6 +48,11 @@ updates:
       day: "monday"
     cooldown:
       default-days: 7
+    # tools/go.mod lists them as indirect requirements, which Dependabot
+    # skips unless they are allowed by name.
+    allow:
+      - dependency-name: "github.com/golangci/golangci-lint/v2"
+      - dependency-name: "golang.org/x/vuln"
     commit-message:
       prefix: "ci(tools):"
     labels:
