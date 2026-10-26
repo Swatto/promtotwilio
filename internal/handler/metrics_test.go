@@ -79,8 +79,8 @@ func TestMetrics_CountersIncrement(t *testing.T) {
 }
 
 func parseCounter(body []byte, metricName string) uint64 {
-	lines := strings.Split(string(body), "\n")
-	for _, line := range lines {
+	lines := strings.SplitSeq(string(body), "\n")
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if strings.HasPrefix(line, "#") || line == "" {
 			continue
