@@ -86,7 +86,7 @@ func main() {
 			if r.Method == http.MethodGet {
 				messages := store.GetAll()
 				w.Header().Set("Content-Type", "application/json")
-				response := map[string]interface{}{
+				response := map[string]any{
 					"count":    len(messages),
 					"messages": messages,
 				}
