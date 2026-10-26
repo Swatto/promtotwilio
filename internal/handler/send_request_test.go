@@ -329,7 +329,7 @@ func TestSendRequest_DryRun(t *testing.T) {
 	cfg := Config{
 		Receivers: []string{"+1234567890"},
 		Sender:    "+0987654321",
-		DryRun:   true,
+		DryRun:    true,
 	}
 	h := NewWithClient(&cfg, mock, "test")
 
