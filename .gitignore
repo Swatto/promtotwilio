@@ -1,5 +1,7 @@
 # Binary
 /promtotwilio
+/test/mock-twilio/mock-twilio
+/test/mock-exporter/mock-exporter
 .built
 
 # Environment
