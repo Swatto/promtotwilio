@@ -74,7 +74,7 @@ func main() {
 		case http.MethodGet:
 			// GET /control - return current state
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"alert_trigger": state.GetAlertTrigger(),
 			})
 
@@ -100,7 +100,7 @@ func main() {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"success":       true,
 				"alert_trigger": state.GetAlertTrigger(),
 			})
@@ -117,7 +117,7 @@ func main() {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"alert_trigger": state.GetAlertTrigger(),
 		})
 	})

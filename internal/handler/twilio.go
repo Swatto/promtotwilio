@@ -59,7 +59,7 @@ func (t *TwilioHTTPClient) SendMessage(to, from, body string) error {
 	var lastErr error
 	backoff := []time.Duration{0, time.Second, 2 * time.Second}
 
-	for attempt := 0; attempt < twilioMaxRetries; attempt++ {
+	for attempt := range twilioMaxRetries {
 		if attempt > 0 {
 			time.Sleep(backoff[attempt])
 		}
