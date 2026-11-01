@@ -34,7 +34,7 @@ env:
 jobs:
   govulncheck:
     name: govulncheck
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     env:
@@ -80,7 +80,7 @@ jobs:
     name: open an issue
     needs: [govulncheck]
     if: failure() && github.event_name == 'schedule'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       issues: write
     steps:
@@ -105,7 +105,7 @@ jobs:
     # Scheduled and manual runs scan what is published, so a pass means the
     # fix has shipped. A pass on a pull request or push only covers the branch.
     if: success() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       issues: write
     steps:
