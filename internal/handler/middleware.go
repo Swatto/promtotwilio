@@ -133,7 +133,7 @@ func LogRequests(format string, next http.Handler) http.Handler {
 				r.RemoteAddr,
 				start.Format("02/Jan/2006:15:04:05 -0700"),
 				r.Method,
-				r.URL.Path,
+				r.URL.EscapedPath(),
 				r.Proto,
 				rec.status,
 				rec.bytes,
@@ -146,7 +146,7 @@ func LogRequests(format string, next http.Handler) http.Handler {
 		} else {
 			slog.Info("http request",
 				"method", r.Method,
-				"path", r.URL.Path,
+				"path", r.URL.EscapedPath(),
 				"status", rec.status,
 				"bytes", rec.bytes,
 				"duration", time.Since(start),
