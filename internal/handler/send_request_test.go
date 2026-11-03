@@ -257,8 +257,8 @@ func TestSendRequest_BodySizeLimitEnforced(t *testing.T) {
 
 	h.SendRequest(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status: got %d, want %d", w.Code, http.StatusBadRequest)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status: got %d, want %d", w.Code, http.StatusRequestEntityTooLarge)
 	}
 	if mockClient.CallCount() != 0 {
 		t.Errorf("call count: got %d, want 0", mockClient.CallCount())

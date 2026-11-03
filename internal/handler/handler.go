@@ -2,6 +2,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -82,7 +83,11 @@ func New(cfg *Config, version string) *Handler {
 		authPassword = cfg.APIKeySecret
 	}
 
-	client := NewTwilioClient(cfg.AccountSid, authUser, authPassword, cfg.TwilioBaseURL)
+	return NewWithClient(cfg, NewTwilioClient(cfg.AccountSid, authUser, authPassword, cfg.TwilioBaseURL), version)
+}
+
+// NewWithClient creates a new Handler with a custom TwilioClient (useful for testing)
+func NewWithClient(cfg *Config, client TwilioClient, version string) *Handler {
 	h := &Handler{
 		Config:    cfg,
 		Client:    client,
@@ -94,17 +99,6 @@ func New(cfg *Config, version string) *Handler {
 		h.rateLimiter = NewRateLimiter(cfg.RateLimit)
 	}
 	return h
-}
-
-// NewWithClient creates a new Handler with a custom TwilioClient (useful for testing)
-func NewWithClient(cfg *Config, client TwilioClient, version string) *Handler {
-	return &Handler{
-		Config:    cfg,
-		Client:    client,
-		StartTime: time.Now(),
-		Version:   version,
-		metrics:   NewMetrics(),
-	}
 }
 
 // RegisterRoutes registers all HTTP routes on the given mux
@@ -155,14 +149,15 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	defer func() {
-		if err := r.Body.Close(); err != nil {
-			slog.Error("send: failed to close request body", "error", err)
-		}
-	}()
-	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodySize))
+	// The server closes r.Body itself; MaxBytesReader reports oversized bodies
+	// explicitly instead of silently truncating them.
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBodySize))
 	if err != nil {
 		slog.Error("send: failed to read request body", "error", err)
+		if _, ok := errors.AsType[*http.MaxBytesError](err); ok {
+			http.Error(w, "send: request body too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "send: failed to read request body", http.StatusBadRequest)
 		return
 	}
@@ -204,11 +199,14 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 		var sent, failed int
 
 		for i := range payload.Alerts {
-			alert := &payload.Alerts[i]
-			for _, receiver := range receivers {
-				rcv, a := receiver, alert
+			// Format once per alert; the body is identical for every receiver.
+			body, fmtErr := FormatMessage(&payload.Alerts[i], status, h.Config)
+			for _, rcv := range receivers {
 				wg.Go(func() {
-					sendErr := h.sendMessage(rcv, a, status)
+					sendErr := fmtErr
+					if sendErr == nil {
+						sendErr = h.sendMessage(rcv, body)
+					}
 					mu.Lock()
 					defer mu.Unlock()
 					if sendErr != nil {
@@ -244,12 +242,7 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) sendMessage(receiver string, alert *Alert, status string) error {
-	body, err := FormatMessage(alert, status, h.Config)
-	if err != nil {
-		return err
-	}
-
+func (h *Handler) sendMessage(receiver, body string) error {
 	if h.Config.DryRun {
 		slog.Info("dry-run: would send SMS", "receiver", receiver, "body", body)
 		return nil

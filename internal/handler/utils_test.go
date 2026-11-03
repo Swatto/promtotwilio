@@ -135,3 +135,20 @@ func TestTruncateMessage_EmptyMessage(t *testing.T) {
 		t.Errorf("expected empty string, got %q", result)
 	}
 }
+
+func TestFindAndReplaceLabels_PrefixOverlap(t *testing.T) {
+	alert := &Alert{Labels: map[string]string{"foo": "X", "foobar": "Y"}}
+	if got := FindAndReplaceLabels("$labels.foo $labels.foobar", alert); got != "X Y" {
+		t.Errorf("got %q, want %q", got, "X Y")
+	}
+}
+
+func TestTruncateMessage_MultiByte(t *testing.T) {
+	got := TruncateMessage("héllo wörld", 8)
+	if got != "héllo..." {
+		t.Errorf("got %q, want %q", got, "héllo...")
+	}
+	if got := TruncateMessage("ééééé", 2); got != "éé" {
+		t.Errorf("got %q, want %q", got, "éé")
+	}
+}
