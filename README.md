@@ -72,6 +72,8 @@ That's it. Point your AlertManager webhook at `http://promtotwilio:9090/send`.
 
 *\* `TOKEN` is required unless `API_KEY` and `API_KEY_SECRET` are provided.*
 
+Invalid `MAX_MESSAGE_LENGTH` (must be > 0) or `RATE_LIMIT` (must be >= 0) values stop the service at startup instead of being ignored.
+
 ### Log Formats
 
 Access logs record the path only, never the query string, so receiver phone numbers stay out of the logs.

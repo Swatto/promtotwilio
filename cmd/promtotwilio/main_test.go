@@ -33,10 +33,19 @@ func minimalEnv() map[string]string {
 
 // ---------- loadConfig tests ----------
 
+func mustLoadConfig(t *testing.T) (*handler.Config, string) {
+	t.Helper()
+	cfg, port, err := loadConfig()
+	if err != nil {
+		t.Fatalf("loadConfig: %v", err)
+	}
+	return cfg, port
+}
+
 func TestLoadConfig_Defaults(t *testing.T) {
 	setEnv(t, minimalEnv())
 
-	cfg, port := loadConfig()
+	cfg, port := mustLoadConfig(t)
 
 	if port != "9090" {
 		t.Errorf("expected default port 9090, got %q", port)
@@ -57,7 +66,7 @@ func TestLoadConfig_CustomPort(t *testing.T) {
 	env["PORT"] = "8080"
 	setEnv(t, env)
 
-	_, port := loadConfig()
+	_, port := mustLoadConfig(t)
 	if port != "8080" {
 		t.Errorf("expected port 8080, got %q", port)
 	}
@@ -68,11 +77,13 @@ func TestLoadConfig_MaxMessageLength(t *testing.T) {
 		name     string
 		envVal   string
 		expected int
+		wantErr  bool
 	}{
-		{"valid", "200", 200},
-		{"invalid string", "abc", 150},
-		{"zero", "0", 150},
-		{"negative", "-5", 150},
+		{"unset", "", 150, false},
+		{"valid", "200", 200, false},
+		{"invalid string", "abc", 0, true},
+		{"zero", "0", 0, true},
+		{"negative", "-5", 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -80,7 +91,16 @@ func TestLoadConfig_MaxMessageLength(t *testing.T) {
 			env["MAX_MESSAGE_LENGTH"] = tt.envVal
 			setEnv(t, env)
 
-			cfg, _ := loadConfig()
+			cfg, _, err := loadConfig()
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "MAX_MESSAGE_LENGTH") {
+					t.Fatalf("expected MAX_MESSAGE_LENGTH error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if cfg.MaxMessageLength != tt.expected {
 				t.Errorf("expected %d, got %d", tt.expected, cfg.MaxMessageLength)
 			}
@@ -93,11 +113,13 @@ func TestLoadConfig_RateLimit(t *testing.T) {
 		name     string
 		envVal   string
 		expected int
+		wantErr  bool
 	}{
-		{"valid", "60", 60},
-		{"invalid string", "abc", 0},
-		{"zero", "0", 0},
-		{"negative", "-1", 0},
+		{"unset", "", 0, false},
+		{"valid", "60", 60, false},
+		{"zero", "0", 0, false},
+		{"invalid string", "60/min", 0, true},
+		{"negative", "-1", 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -105,7 +127,16 @@ func TestLoadConfig_RateLimit(t *testing.T) {
 			env["RATE_LIMIT"] = tt.envVal
 			setEnv(t, env)
 
-			cfg, _ := loadConfig()
+			cfg, _, err := loadConfig()
+			if tt.wantErr {
+				if err == nil || !strings.Contains(err.Error(), "RATE_LIMIT") {
+					t.Fatalf("expected RATE_LIMIT error, got %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
 			if cfg.RateLimit != tt.expected {
 				t.Errorf("expected %d, got %d", tt.expected, cfg.RateLimit)
 			}
@@ -118,7 +149,7 @@ func TestLoadConfig_SendResolved(t *testing.T) {
 	env["SEND_RESOLVED"] = "true"
 	setEnv(t, env)
 
-	cfg, _ := loadConfig()
+	cfg, _ := mustLoadConfig(t)
 	if !cfg.SendResolved {
 		t.Error("expected SendResolved to be true")
 	}
@@ -129,7 +160,7 @@ func TestLoadConfig_Receivers(t *testing.T) {
 	env["RECEIVER"] = "+1111, +2222, +3333"
 	setEnv(t, env)
 
-	cfg, _ := loadConfig()
+	cfg, _ := mustLoadConfig(t)
 	if len(cfg.Receivers) != 3 {
 		t.Fatalf("expected 3 receivers, got %d", len(cfg.Receivers))
 	}
@@ -144,7 +175,7 @@ func TestLoadConfig_APIKeyFields(t *testing.T) {
 	env["API_KEY_SECRET"] = "secret"
 	setEnv(t, env)
 
-	cfg, _ := loadConfig()
+	cfg, _ := mustLoadConfig(t)
 	if cfg.APIKey != "SK_key" {
 		t.Errorf("expected API_KEY SK_key, got %q", cfg.APIKey)
 	}
@@ -160,7 +191,7 @@ func TestLoadConfig_OptionalFields(t *testing.T) {
 	env["LOG_FORMAT"] = "nginx"
 	setEnv(t, env)
 
-	cfg, _ := loadConfig()
+	cfg, _ := mustLoadConfig(t)
 	if cfg.TwilioBaseURL != "http://localhost:9999" {
 		t.Errorf("unexpected TwilioBaseURL %q", cfg.TwilioBaseURL)
 	}
@@ -177,7 +208,7 @@ func TestLoadConfig_WebhookSecret(t *testing.T) {
 	env["WEBHOOK_SECRET"] = "bearer-token-123"
 	setEnv(t, env)
 
-	cfg, _ := loadConfig()
+	cfg, _ := mustLoadConfig(t)
 	if cfg.WebhookSecret != "bearer-token-123" {
 		t.Errorf("expected WebhookSecret %q, got %q", "bearer-token-123", cfg.WebhookSecret)
 	}
@@ -188,7 +219,7 @@ func TestLoadConfig_DryRun(t *testing.T) {
 	env["DRY_RUN"] = "true"
 	setEnv(t, env)
 
-	cfg, _ := loadConfig()
+	cfg, _ := mustLoadConfig(t)
 	if !cfg.DryRun {
 		t.Error("expected DryRun to be true")
 	}

@@ -24,16 +24,32 @@ const (
 // Version can be set at build time via ldflags
 var Version = "1.0.0"
 
-// envPositiveInt returns the env var as a positive int, or def if unset or invalid.
-func envPositiveInt(key string, def int) int {
-	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
-		return v
+// envInt returns the env var as an int of at least minVal, or def if unset.
+// A malformed or too-small value is an error, so a typo can't silently
+// disable a setting such as the rate limit.
+func envInt(key string, def, minVal int) (int, error) {
+	raw := os.Getenv(key)
+	if raw == "" {
+		return def, nil
 	}
-	return def
+	v, err := strconv.Atoi(raw)
+	if err != nil || v < minVal {
+		return 0, fmt.Errorf("%s must be an integer >= %d (got %q)", key, minVal, raw)
+	}
+	return v, nil
 }
 
 // loadConfig reads environment variables and returns the application config and port.
-func loadConfig() (*handler.Config, string) {
+func loadConfig() (*handler.Config, string, error) {
+	maxLen, err := envInt("MAX_MESSAGE_LENGTH", handler.DefaultMaxMessageLength, 1)
+	if err != nil {
+		return nil, "", err
+	}
+	rateLimit, err := envInt("RATE_LIMIT", 0, 0)
+	if err != nil {
+		return nil, "", err
+	}
+
 	cfg := &handler.Config{
 		AccountSid:       os.Getenv("SID"),
 		AuthToken:        os.Getenv("TOKEN"),
@@ -43,9 +59,9 @@ func loadConfig() (*handler.Config, string) {
 		Sender:           os.Getenv("SENDER"),
 		TwilioBaseURL:    os.Getenv("TWILIO_BASE_URL"),
 		SendResolved:     os.Getenv("SEND_RESOLVED") == "true",
-		MaxMessageLength: envPositiveInt("MAX_MESSAGE_LENGTH", 150),
+		MaxMessageLength: maxLen,
 		MessagePrefix:    os.Getenv("MESSAGE_PREFIX"),
-		RateLimit:        envPositiveInt("RATE_LIMIT", 0),
+		RateLimit:        rateLimit,
 		LogFormat:        os.Getenv("LOG_FORMAT"),
 		WebhookSecret:    os.Getenv("WEBHOOK_SECRET"),
 		DryRun:           os.Getenv("DRY_RUN") == "true",
@@ -56,13 +72,16 @@ func loadConfig() (*handler.Config, string) {
 		port = "9090"
 	}
 
-	return cfg, port
+	return cfg, port, nil
 }
 
 // run contains the application lifecycle. It returns an error instead of
 // calling os.Exit so that the logic is testable.
 func run(ctx context.Context) error {
-	cfg, port := loadConfig()
+	cfg, port, err := loadConfig()
+	if err != nil {
+		return fmt.Errorf("startup: invalid configuration: %w", err)
+	}
 
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("startup: invalid configuration: %w", err)

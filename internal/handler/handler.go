@@ -26,6 +26,9 @@ const (
 	maxConcurrentSends = 10
 )
 
+// DefaultMaxMessageLength is the SMS length used when MaxMessageLength is unset.
+const DefaultMaxMessageLength = 150
+
 // Config holds the configuration for the handler
 //
 //nolint:govet // fieldalignment: minor optimization not worth reduced readability
@@ -38,7 +41,7 @@ type Config struct {
 	Receivers        []string
 	TwilioBaseURL    string // Optional: override Twilio API base URL (for testing)
 	SendResolved     bool   // Enable sending notifications for resolved alerts
-	MaxMessageLength int    // Maximum message length before truncation (default: 150)
+	MaxMessageLength int    // Maximum message length before truncation (default: DefaultMaxMessageLength)
 	MessagePrefix    string // Custom prefix to prepend to all messages (optional)
 	RateLimit        int    // Max requests per minute on /send (0 = disabled)
 	LogFormat        string // Access log format: "simple" (default) or "nginx"
