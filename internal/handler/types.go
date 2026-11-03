@@ -30,17 +30,11 @@ type Alert struct {
 // GetLabel returns the value of a label, or empty string if not present.
 // Labels like severity, instance, job are user-defined and may not exist.
 func (a *Alert) GetLabel(name string) string {
-	if a.Labels == nil {
-		return ""
-	}
-	return a.Labels[name]
+	return a.Labels[name] // indexing a nil map yields ""
 }
 
 // GetAnnotation returns the value of an annotation, or empty string if not present.
 // Annotations like summary, description are user-defined and may not exist.
 func (a *Alert) GetAnnotation(name string) string {
-	if a.Annotations == nil {
-		return ""
-	}
 	return a.Annotations[name]
 }

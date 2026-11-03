@@ -25,30 +25,23 @@ func ParseReceivers(receivers string) []string {
 	return result
 }
 
-// FindAndReplaceLabels replaces $labels.xxx placeholders with actual label values
+// FindAndReplaceLabels replaces $labels.xxx placeholders with actual label values.
+// Missing labels are replaced with an empty string.
 func FindAndReplaceLabels(body string, alert *Alert) string {
-	matches := labelReg.FindAllString(body, -1)
-
-	for _, match := range matches {
-		labelName := strings.Split(match, ".")
-		if len(labelName) == 2 {
-			// GetLabel returns empty string if label doesn't exist (user-defined labels are not guaranteed)
-			replaceWith := alert.GetLabel(labelName[1])
-			body = strings.ReplaceAll(body, match, replaceWith)
-		}
-	}
-
-	return body
+	return labelReg.ReplaceAllStringFunc(body, func(match string) string {
+		return alert.GetLabel(strings.TrimPrefix(match, "$labels."))
+	})
 }
 
-// TruncateMessage truncates a message to the specified maximum length, adding "..." if truncated.
-// If maxLen is <= 3, it truncates without the "..." suffix.
+// TruncateMessage truncates a message to at most maxLen characters (runes), adding "..." if truncated.
+// If maxLen is <= 3, it truncates without the "..." suffix. Multi-byte characters are never split.
 func TruncateMessage(msg string, maxLen int) string {
-	if len(msg) <= maxLen {
+	runes := []rune(msg)
+	if len(runes) <= maxLen {
 		return msg
 	}
 	if maxLen <= 3 {
-		return msg[:maxLen]
+		return string(runes[:maxLen])
 	}
-	return msg[:maxLen-3] + "..."
+	return string(runes[:maxLen-3]) + "..."
 }

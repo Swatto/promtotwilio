@@ -24,22 +24,16 @@ const (
 // Version can be set at build time via ldflags
 var Version = "1.0.0"
 
+// envPositiveInt returns the env var as a positive int, or def if unset or invalid.
+func envPositiveInt(key string, def int) int {
+	if v, err := strconv.Atoi(os.Getenv(key)); err == nil && v > 0 {
+		return v
+	}
+	return def
+}
+
 // loadConfig reads environment variables and returns the application config and port.
 func loadConfig() (*handler.Config, string) {
-	maxMessageLength := 150
-	if maxLenStr := os.Getenv("MAX_MESSAGE_LENGTH"); maxLenStr != "" {
-		if parsedLen, err := strconv.Atoi(maxLenStr); err == nil && parsedLen > 0 {
-			maxMessageLength = parsedLen
-		}
-	}
-
-	var rateLimit int
-	if rlStr := os.Getenv("RATE_LIMIT"); rlStr != "" {
-		if parsed, err := strconv.Atoi(rlStr); err == nil && parsed > 0 {
-			rateLimit = parsed
-		}
-	}
-
 	cfg := &handler.Config{
 		AccountSid:       os.Getenv("SID"),
 		AuthToken:        os.Getenv("TOKEN"),
@@ -49,9 +43,9 @@ func loadConfig() (*handler.Config, string) {
 		Sender:           os.Getenv("SENDER"),
 		TwilioBaseURL:    os.Getenv("TWILIO_BASE_URL"),
 		SendResolved:     os.Getenv("SEND_RESOLVED") == "true",
-		MaxMessageLength: maxMessageLength,
+		MaxMessageLength: envPositiveInt("MAX_MESSAGE_LENGTH", 150),
 		MessagePrefix:    os.Getenv("MESSAGE_PREFIX"),
-		RateLimit:        rateLimit,
+		RateLimit:        envPositiveInt("RATE_LIMIT", 0),
 		LogFormat:        os.Getenv("LOG_FORMAT"),
 		WebhookSecret:    os.Getenv("WEBHOOK_SECRET"),
 		DryRun:           os.Getenv("DRY_RUN") == "true",
