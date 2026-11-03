@@ -200,7 +200,7 @@ services:
   alertmanager:
     image: prom/alertmanager:latest
     volumes:
-      - ./alertmanager.yml:/etc/alertmanager/config.yml
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
     depends_on:
       - promtotwilio
 ```
