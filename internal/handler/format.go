@@ -51,7 +51,7 @@ func FormatMessage(alert *Alert, status string, config *Config) (string, error) 
 	// Truncate message if it exceeds maximum length
 	maxLen := config.MaxMessageLength
 	if maxLen <= 0 {
-		maxLen = 150 // Default to 150 if not set or invalid
+		maxLen = DefaultMaxMessageLength
 	}
 	body = TruncateMessage(body, maxLen)
 
