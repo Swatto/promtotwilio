@@ -116,3 +116,16 @@ func TestHealth(t *testing.T) {
 		t.Errorf("expected version '1.0.0', got %q", resp.Version)
 	}
 }
+
+func TestPingRouteDoesNotCatchUnknownPaths(t *testing.T) {
+	mux := http.NewServeMux()
+	NewWithClient(&Config{}, &MockTwilioClient{}, "test").RegisterRoutes(mux)
+
+	for path, want := range map[string]int{"/": http.StatusOK, "/unknown": http.StatusNotFound} {
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		if w.Code != want {
+			t.Errorf("GET %s: got %d, want %d", path, w.Code, want)
+		}
+	}
+}

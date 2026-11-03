@@ -43,6 +43,11 @@ func TestParseReceivers(t *testing.T) {
 			expected: []string{"+1234567890", "+0987654321"},
 		},
 		{
+			name:     "duplicates are removed",
+			input:    "+1234567890, +0987654321,+1234567890",
+			expected: []string{"+1234567890", "+0987654321"},
+		},
+		{
 			name:     "only commas",
 			input:    ",,,",
 			expected: []string{},

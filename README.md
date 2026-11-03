@@ -74,6 +74,8 @@ That's it. Point your AlertManager webhook at `http://promtotwilio:9090/send`.
 
 ### Log Formats
 
+Access logs record the path only, never the query string, so receiver phone numbers stay out of the logs.
+
 `LOG_FORMAT=simple` (default) — structured slog output:
 ```
 2026/02/18 11:34:13 INFO http request method=GET path=/ status=200 bytes=4 duration=11.459µs
@@ -141,7 +143,7 @@ Receives Prometheus/AlertManager webhook payloads and sends SMS.
 **Authentication:** If `WEBHOOK_SECRET` is set, requests must include `Authorization: Bearer <WEBHOOK_SECRET>`.
 
 **Query Parameters:**
-- `receiver` — Override default receiver(s). Comma-separated, URL-encoded.
+- `receiver` — Override default receiver(s). Comma-separated, URL-encoded. Duplicate numbers are sent once.
 
 **Example:**
 ```bash
@@ -160,7 +162,9 @@ curl -X POST "http://localhost:9090/send?receiver=%2B1234567890" \
 }
 ```
 
-Returns `401 Unauthorized` if `WEBHOOK_SECRET` is set and the `Authorization` header is missing or invalid. Returns `429 Too Many Requests` if `RATE_LIMIT` is configured and the limit is exceeded.
+Returns `415 Unsupported Media Type` if `Content-Type` is not `application/json`. Returns `401 Unauthorized` if `WEBHOOK_SECRET` is set and the `Authorization` header is missing or invalid. Returns `429 Too Many Requests` if `RATE_LIMIT` is configured and the limit is exceeded.
+
+Up to 10 messages are sent in parallel, and all Twilio calls for one request must finish within 25 seconds. Twilio errors (429, 5xx, timeouts) are attempted up to 3 times within that window. A message Twilio accepted is never resent.
 
 ---
 

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -9,7 +10,8 @@ import (
 // Compiled once at package init for performance.
 var labelReg = regexp.MustCompile(`\$labels\.[a-zA-Z_][a-zA-Z0-9_]*`)
 
-// ParseReceivers splits a comma-separated string of phone numbers into a slice
+// ParseReceivers splits a comma-separated string of phone numbers into a slice,
+// dropping empty entries and duplicates so no number gets the same SMS twice.
 func ParseReceivers(receivers string) []string {
 	if receivers == "" {
 		return nil
@@ -18,7 +20,7 @@ func ParseReceivers(receivers string) []string {
 	result := make([]string, 0, len(parts))
 	for _, p := range parts {
 		trimmed := strings.TrimSpace(p)
-		if trimmed != "" {
+		if trimmed != "" && !slices.Contains(result, trimmed) {
 			result = append(result, trimmed)
 		}
 	}
