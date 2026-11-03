@@ -111,7 +111,8 @@ func (rl *RateLimiter) Wrap(next http.Handler) http.Handler {
 	})
 }
 
-// LogRequests returns middleware that logs each HTTP request.
+// LogRequests returns middleware that logs each HTTP request. Only the path is
+// logged: the query string can carry receiver phone numbers.
 // format selects the output style:
 //   - "simple" (or ""): structured slog line with method, path, status, bytes, duration
 //   - "nginx": nginx combined log format
@@ -132,7 +133,7 @@ func LogRequests(format string, next http.Handler) http.Handler {
 				r.RemoteAddr,
 				start.Format("02/Jan/2006:15:04:05 -0700"),
 				r.Method,
-				r.RequestURI,
+				r.URL.EscapedPath(),
 				r.Proto,
 				rec.status,
 				rec.bytes,
@@ -145,7 +146,7 @@ func LogRequests(format string, next http.Handler) http.Handler {
 		} else {
 			slog.Info("http request",
 				"method", r.Method,
-				"path", r.RequestURI,
+				"path", r.URL.EscapedPath(),
 				"status", rec.status,
 				"bytes", rec.bytes,
 				"duration", time.Since(start),

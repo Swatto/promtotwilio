@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestSendRequest(t *testing.T) {
@@ -34,7 +37,7 @@ func TestSendRequest(t *testing.T) {
 			cfg:         Config{Receivers: []string{"+1234567890"}, Sender: "+0987654321"},
 			payload:     "{}",
 			contentType: "text/plain",
-			wantStatus:  http.StatusNotAcceptable,
+			wantStatus:  http.StatusUnsupportedMediaType,
 		},
 		{
 			name:          "content type with charset",
@@ -351,5 +354,52 @@ func TestSendRequest_DryRun(t *testing.T) {
 	}
 	if mock.CallCount() != 0 {
 		t.Errorf("dry-run: mock should not be called, got %d", mock.CallCount())
+	}
+}
+
+func TestSendRequest_SuccessReturnsEmptyErrorsArray(t *testing.T) {
+	h := NewWithClient(&Config{Receivers: []string{"+1234567890"}, Sender: "+0987654321"}, &MockTwilioClient{}, "test")
+	req := httptest.NewRequest(http.MethodPost, "/send",
+		strings.NewReader(`{"status":"firing","alerts":[{"annotations":{"summary":"x"}}]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	h.SendRequest(w, req)
+
+	if !strings.Contains(w.Body.String(), `"errors":[]`) {
+		t.Errorf(`expected "errors":[] in response, got %s`, w.Body.String())
+	}
+}
+
+func TestSendRequest_BoundsConcurrentSends(t *testing.T) {
+	var mu sync.Mutex
+	var inFlight, peak int
+	mock := &MockTwilioClient{SendMessageFunc: func(_, _, _ string) error {
+		mu.Lock()
+		inFlight++
+		peak = max(peak, inFlight)
+		mu.Unlock()
+		time.Sleep(5 * time.Millisecond)
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		return nil
+	}}
+	receivers := make([]string, 3*maxConcurrentSends)
+	for i := range receivers {
+		receivers[i] = fmt.Sprintf("+1555000%04d", i)
+	}
+	h := NewWithClient(&Config{Receivers: receivers, Sender: "+0987654321"}, mock, "test")
+	req := httptest.NewRequest(http.MethodPost, "/send",
+		strings.NewReader(`{"status":"firing","alerts":[{"annotations":{"summary":"x"}}]}`))
+	req.Header.Set("Content-Type", "application/json")
+
+	h.SendRequest(httptest.NewRecorder(), req)
+
+	if mock.CallCount() != len(receivers) {
+		t.Fatalf("call count: got %d, want %d", mock.CallCount(), len(receivers))
+	}
+	if peak > maxConcurrentSends {
+		t.Errorf("peak concurrent sends: got %d, want <= %d", peak, maxConcurrentSends)
 	}
 }

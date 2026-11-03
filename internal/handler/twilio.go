@@ -14,12 +14,13 @@ import (
 const (
 	defaultTwilioBaseURL = "https://api.twilio.com"
 	twilioMaxRetries     = 3
-	twilioRequestTimeout = 30 * time.Second
+	twilioRequestTimeout = 10 * time.Second // per attempt
+	maxErrorBodySize     = 4 << 10
 )
 
 // TwilioClient is an interface for sending SMS messages
 type TwilioClient interface {
-	SendMessage(to, from, body string) error
+	SendMessage(ctx context.Context, to, from, body string) error
 }
 
 // TwilioHTTPClient sends SMS via direct HTTP calls to Twilio API
@@ -48,7 +49,8 @@ func NewTwilioClient(accountSid, authUser, authPassword, baseURL string) *Twilio
 }
 
 // SendMessage sends an SMS using the Twilio REST API with retries on 5xx, 429, and transient errors.
-func (t *TwilioHTTPClient) SendMessage(to, from, body string) error {
+// It stops retrying once ctx is done.
+func (t *TwilioHTTPClient) SendMessage(ctx context.Context, to, from, body string) error {
 	apiURL := fmt.Sprintf("%s/2010-04-01/Accounts/%s/Messages.json", t.baseURL, t.accountSid)
 	data := url.Values{}
 	data.Set("To", to)
@@ -61,41 +63,40 @@ func (t *TwilioHTTPClient) SendMessage(to, from, body string) error {
 
 	for attempt := range twilioMaxRetries {
 		if attempt > 0 {
-			time.Sleep(backoff[attempt])
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("%w (last error: %w)", ctx.Err(), lastErr)
+			case <-time.After(backoff[attempt]):
+			}
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), twilioRequestTimeout)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, strings.NewReader(encoded))
 		if err != nil {
-			cancel()
 			return fmt.Errorf("twilio: failed to create HTTP request: %w", err)
 		}
 		req.SetBasicAuth(t.authUser, t.authPassword)
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 		resp, err := t.httpClient.Do(req)
-		cancel()
 		if err != nil {
 			lastErr = fmt.Errorf("twilio: failed to send HTTP request: %w", err)
-			if isRetryableNetError(err) {
+			if ctx.Err() == nil && isRetryableNetError(err) {
 				continue
 			}
 			return lastErr
 		}
 
-		respBody, readErr := io.ReadAll(resp.Body)
-		_ = resp.Body.Close()
-		if readErr != nil {
-			lastErr = fmt.Errorf("twilio: failed to read response: %w", readErr)
-			continue
-		}
-
+		// A 2xx means Twilio accepted the message: never retry it, even if the
+		// body can't be read, or the SMS would be sent twice.
 		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			_ = resp.Body.Close()
 			return nil
 		}
 
-		lastErr = fmt.Errorf("twilio: API error (status %d): %s", resp.StatusCode, string(respBody))
-		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodySize))
+		_ = resp.Body.Close()
+		lastErr = fmt.Errorf("twilio: API error (status %d): %s", resp.StatusCode, respBody)
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
 			continue
 		}
 		return lastErr

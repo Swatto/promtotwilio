@@ -176,19 +176,19 @@ else
     fail "POST /send without receiver returns 400" "400" "$HTTP_CODE"
 fi
 
-# Test 7: POST /send with wrong content-type returns 406
+# Test 7: POST /send with wrong content-type returns 415
 echo ""
-echo "Test 7: POST /send with wrong Content-Type should return 406"
+echo "Test 7: POST /send with wrong Content-Type should return 415"
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST \
     -H "Content-Type: text/plain" \
     -d '{}' \
     "$APP_URL/send?receiver=%2B1234567890")
 
-if [ "$HTTP_CODE" = "406" ]; then
-    pass "POST /send with wrong Content-Type returns 406"
+if [ "$HTTP_CODE" = "415" ]; then
+    pass "POST /send with wrong Content-Type returns 415"
 else
-    fail "POST /send with wrong Content-Type returns 406" "406" "$HTTP_CODE"
+    fail "POST /send with wrong Content-Type returns 415" "415" "$HTTP_CODE"
 fi
 
 # Test 8: POST /send with resolved status behavior check
@@ -234,7 +234,7 @@ fi
 
 # Test 9: Prometheus scrapes promtotwilio and sees correct metric values
 # By end of Test 8 we have 3 processed batches (tests 4,5,8) and 4 SMS (1+2+1).
-# Tests 6,7 fail validation (400/406) before reaching the processing stage.
+# Tests 6,7 fail validation (400/415) before reaching the processing stage.
 echo ""
 echo "Test 9: Prometheus scrapes promtotwilio /metrics and sees correct numbers"
 MIN_ALERTS_PROCESSED=3

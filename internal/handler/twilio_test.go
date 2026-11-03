@@ -1,11 +1,15 @@
 package handler
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestNewTwilioClient_DefaultBaseURL(t *testing.T) {
@@ -55,7 +59,7 @@ func TestTwilioHTTPClient_SendMessage_AccountSIDAuth(t *testing.T) {
 
 	// Test with Account SID auth (same as authUser)
 	client := NewTwilioClient("AC123456", "AC123456", "authToken123", server.URL)
-	err := client.SendMessage("+15551234567", "+15559876543", "Test message")
+	err := client.SendMessage(t.Context(), "+15551234567", "+15559876543", "Test message")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -103,7 +107,7 @@ func TestTwilioHTTPClient_SendMessage_APIKeyAuth(t *testing.T) {
 
 	// Test with API Key auth (authUser differs from accountSid)
 	client := NewTwilioClient("AC123456", "SK789abc", "apiKeySecret", server.URL)
-	err := client.SendMessage("+15551234567", "+15559876543", "Test message")
+	err := client.SendMessage(t.Context(), "+15551234567", "+15559876543", "Test message")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -132,7 +136,7 @@ func TestTwilioHTTPClient_SendMessage_Error(t *testing.T) {
 	defer server.Close()
 
 	client := NewTwilioClient("AC123456", "AC123456", "badToken", server.URL)
-	err := client.SendMessage("+15551234567", "+15559876543", "Test message")
+	err := client.SendMessage(t.Context(), "+15551234567", "+15559876543", "Test message")
 
 	if err == nil {
 		t.Fatal("expected error, got nil")
@@ -203,7 +207,7 @@ func TestTwilioHTTPClient_SendMessage_RetriesOn5xx(t *testing.T) {
 	defer server.Close()
 
 	client := NewTwilioClient("AC123456", "AC123456", "authToken", server.URL)
-	err := client.SendMessage("+15551234567", "+15559876543", "Test")
+	err := client.SendMessage(t.Context(), "+15551234567", "+15559876543", "Test")
 
 	if err != nil {
 		t.Fatalf("unexpected error after retries: %v", err)
@@ -235,7 +239,7 @@ func TestNew_APIKeyTakesPrecedence(t *testing.T) {
 	}
 
 	h := New(cfg, "1.0.0")
-	err := h.Client.SendMessage("+15559876543", cfg.Sender, "Test")
+	err := h.Client.SendMessage(t.Context(), "+15559876543", cfg.Sender, "Test")
 
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -244,5 +248,47 @@ func TestNew_APIKeyTakesPrecedence(t *testing.T) {
 	// API Key should be used, not Account SID
 	if receivedAuthUser != "SK789abc" {
 		t.Errorf("expected API Key %q to take precedence, but got %q", "SK789abc", receivedAuthUser)
+	}
+}
+
+// A 2xx means Twilio accepted the message: the client must not wait for or
+// depend on the body, and must never resend.
+func TestTwilioHTTPClient_SendMessage_AcceptedIsNotRetried(t *testing.T) {
+	var calls atomic.Int32
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusCreated)
+		w.(http.Flusher).Flush()
+		<-release // body never arrives while the client is waiting
+	}))
+	defer server.Close()
+	defer close(release)
+
+	client := NewTwilioClient("AC123", "AC123", "tok", server.URL)
+	if err := client.SendMessage(t.Context(), "+15551234567", "+15559876543", "Test"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected 1 request, got %d", got)
+	}
+}
+
+func TestTwilioHTTPClient_SendMessage_StopsRetryingWhenContextDone(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	client := NewTwilioClient("AC123", "AC123", "tok", server.URL)
+	if err := client.SendMessage(ctx, "+15551234567", "+15559876543", "Test"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("expected deadline exceeded, got %v", err)
+	}
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected 1 request before the deadline, got %d", got)
 	}
 }

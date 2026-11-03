@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"sync"
 )
 
@@ -19,7 +20,7 @@ type MockCall struct {
 }
 
 // SendMessage implements the TwilioClient interface
-func (m *MockTwilioClient) SendMessage(to, from, body string) error {
+func (m *MockTwilioClient) SendMessage(_ context.Context, to, from, body string) error {
 	m.mu.Lock()
 	m.Calls = append(m.Calls, MockCall{To: to, From: from, Body: body})
 	m.mu.Unlock()

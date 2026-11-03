@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,14 @@ import (
 // This prevents denial-of-service attacks via large request bodies
 // while allowing for large alerts or many receivers.
 const maxBodySize = 5 << 20
+
+const (
+	// sendTimeout bounds all Twilio calls for one request. It must stay below
+	// the server's WriteTimeout so the caller still gets the response.
+	sendTimeout = 25 * time.Second
+	// maxConcurrentSends bounds parallel Twilio calls for one request.
+	maxConcurrentSends = 10
+)
 
 // Config holds the configuration for the handler
 //
@@ -103,7 +112,7 @@ func NewWithClient(cfg *Config, client TwilioClient, version string) *Handler {
 
 // RegisterRoutes registers all HTTP routes on the given mux
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /", h.Ping)
+	mux.HandleFunc("GET /{$}", h.Ping)
 	mux.HandleFunc("GET /health", h.Health)
 	mux.HandleFunc("GET /metrics", h.Metrics)
 
@@ -140,12 +149,16 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 
 // SendRequest handles the send SMS endpoint
 func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
+	// Start the budget on arrival: the server's WriteTimeout is already running.
+	ctx, cancel := context.WithTimeout(r.Context(), sendTimeout)
+	defer cancel()
+
 	contentType := r.Header.Get("Content-Type")
 	// Handle Content-Type case-insensitively and allow charset parameters
 	// e.g., "application/json", "Application/JSON", "application/json; charset=utf-8"
 	if !strings.HasPrefix(strings.ToLower(contentType), "application/json") {
 		slog.Error("send: invalid Content-Type", "content_type", contentType)
-		http.Error(w, "send: Content-Type must be application/json", http.StatusNotAcceptable)
+		http.Error(w, "send: Content-Type must be application/json", http.StatusUnsupportedMediaType)
 		return
 	}
 
@@ -193,19 +206,22 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 
 	if shouldProcess {
 		h.metrics.IncAlertsProcessed()
+		sem := make(chan struct{}, maxConcurrentSends)
 		var wg sync.WaitGroup
 		var mu sync.Mutex
-		var sendErrors []string
+		sendErrors := []string{}
 		var sent, failed int
 
 		for i := range payload.Alerts {
 			// Format once per alert; the body is identical for every receiver.
 			body, fmtErr := FormatMessage(&payload.Alerts[i], status, h.Config)
 			for _, rcv := range receivers {
+				sem <- struct{}{}
 				wg.Go(func() {
+					defer func() { <-sem }()
 					sendErr := fmtErr
 					if sendErr == nil {
-						sendErr = h.sendMessage(rcv, body)
+						sendErr = h.sendMessage(ctx, rcv, body)
 					}
 					mu.Lock()
 					defer mu.Unlock()
@@ -242,13 +258,13 @@ func (h *Handler) SendRequest(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handler) sendMessage(receiver, body string) error {
+func (h *Handler) sendMessage(ctx context.Context, receiver, body string) error {
 	if h.Config.DryRun {
 		slog.Info("dry-run: would send SMS", "receiver", receiver, "body", body)
 		return nil
 	}
 
-	if err := h.Client.SendMessage(receiver, h.Config.Sender, body); err != nil {
+	if err := h.Client.SendMessage(ctx, receiver, h.Config.Sender, body); err != nil {
 		slog.Error("twilio: failed to send SMS", "receiver", receiver, "error", err)
 		return err
 	}
