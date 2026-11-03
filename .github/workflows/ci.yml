@@ -83,6 +83,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-26.04
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -96,6 +97,7 @@ jobs:
         id: e2e
         continue-on-error: true
         run: |
+          set -o pipefail
           docker compose -f docker-compose.e2e.yml run --rm e2e-tests 2>&1 | tee /tmp/e2e-output.txt
 
       - name: E2E test summary

@@ -9,6 +9,12 @@ PROMETHEUS_URL="${PROMETHEUS_URL:-http://prometheus:9090}"
 MAX_RETRIES=30
 RETRY_INTERVAL=1
 
+# Bound every HTTP call so a stuck service fails the run instead of hanging it.
+# --max-time stays above the service's 25s send deadline.
+curl() {
+    command curl --connect-timeout 5 --max-time 30 "$@"
+}
+
 echo "========================================="
 echo "E2E Tests for promtotwilio"
 echo "========================================="
@@ -235,39 +241,34 @@ MIN_ALERTS_PROCESSED=3
 MIN_SMS_SENT=4
 MIN_SMS_FAILED=0
 echo "  Minimum expected from Part 1: alerts_processed>=$MIN_ALERTS_PROCESSED, sms_sent>=$MIN_SMS_SENT, sms_failed>=$MIN_SMS_FAILED"
-echo "  Waiting for Prometheus to scrape promtotwilio (up to 15s)..."
-PROM_HAS_METRICS=""
+echo "  Waiting for Prometheus to scrape the expected values (up to 15s)..."
+# prom_value prints a metric's current value as an integer (0 if absent).
+prom_value() {
+    local v
+    v=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=$1" 2>/dev/null | jq -r '.data.result[0].value[1] // "0"' 2>/dev/null)
+    v=${v:-0}
+    echo "${v%%.*}" # Prometheus may return floats (e.g. 5.0)
+}
+# Poll until every counter reaches its minimum: an earlier scrape can hold
+# stale values even though the series already exists.
+PROM_OK=""
 for _ in $(seq 1 15); do
-    PROM_QUERY=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_alerts_processed_total" 2>/dev/null || echo "{}")
-    PROM_RESULT_COUNT=$(echo "$PROM_QUERY" | jq -r '.data.result | length' 2>/dev/null || echo "0")
-    if [ "$PROM_RESULT_COUNT" -gt 0 ] 2>/dev/null; then
-        PROM_HAS_METRICS=1
+    PROM_SEND_REQ=$(prom_value promtotwilio_alerts_processed_total)
+    PROM_SMS_SENT=$(prom_value promtotwilio_sms_sent_total)
+    PROM_SMS_FAILED=$(prom_value promtotwilio_sms_failed_total)
+    if [ "$PROM_SEND_REQ" -ge "$MIN_ALERTS_PROCESSED" ] 2>/dev/null && [ "$PROM_SMS_SENT" -ge "$MIN_SMS_SENT" ] 2>/dev/null && [ "$PROM_SMS_FAILED" -ge "$MIN_SMS_FAILED" ] 2>/dev/null; then
+        PROM_OK=1
         break
     fi
     sleep 1
 done
+echo "  Prometheus scraped metrics: alerts_processed=$PROM_SEND_REQ, sms_sent=$PROM_SMS_SENT, sms_failed=$PROM_SMS_FAILED"
 
-if [ -z "$PROM_HAS_METRICS" ]; then
-    fail "Prometheus scrapes promtotwilio metrics" "query returns at least one result" "no result after 15s"
+if [ -n "$PROM_OK" ]; then
+    pass "Prometheus sees correct promtotwilio metric values (>= minimum from Part 1)"
+    echo "  Prometheus values meet minimum expected from tests 4,5,7,8"
 else
-    PROM_SEND_REQ=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_alerts_processed_total" | jq -r '.data.result[0].value[1]' 2>/dev/null | tr -d '"')
-    PROM_SMS_SENT=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_sms_sent_total" | jq -r '.data.result[0].value[1]' 2>/dev/null | tr -d '"')
-    PROM_SMS_FAILED=$(curl -sf "$PROMETHEUS_URL/api/v1/query?query=promtotwilio_sms_failed_total" | jq -r '.data.result[0].value[1]' 2>/dev/null | tr -d '"')
-    PROM_SEND_REQ=${PROM_SEND_REQ:-0}
-    PROM_SMS_SENT=${PROM_SMS_SENT:-0}
-    PROM_SMS_FAILED=${PROM_SMS_FAILED:-0}
-    # Prometheus may return floats (e.g. 5.0); strip to int for comparison
-    PROM_SEND_REQ=${PROM_SEND_REQ%%.*}
-    PROM_SMS_SENT=${PROM_SMS_SENT%%.*}
-    PROM_SMS_FAILED=${PROM_SMS_FAILED%%.*}
-    echo "  Prometheus scraped metrics: alerts_processed=$PROM_SEND_REQ, sms_sent=$PROM_SMS_SENT, sms_failed=$PROM_SMS_FAILED"
-
-    if [ "${PROM_SEND_REQ:-0}" -ge "$MIN_ALERTS_PROCESSED" ] 2>/dev/null && [ "${PROM_SMS_SENT:-0}" -ge "$MIN_SMS_SENT" ] 2>/dev/null && [ "${PROM_SMS_FAILED:-0}" -ge "$MIN_SMS_FAILED" ] 2>/dev/null; then
-        pass "Prometheus sees correct promtotwilio metric values (>= minimum from Part 1)"
-        echo "  Prometheus values meet minimum expected from tests 4,5,7,8"
-    else
-        fail "Prometheus sees correct promtotwilio metric values" "alerts_processed>=$MIN_ALERTS_PROCESSED, sent>=$MIN_SMS_SENT, failed>=$MIN_SMS_FAILED" "PROM alerts_processed=$PROM_SEND_REQ, sent=$PROM_SMS_SENT, failed=$PROM_SMS_FAILED"
-    fi
+    fail "Prometheus sees correct promtotwilio metric values" "alerts_processed>=$MIN_ALERTS_PROCESSED, sent>=$MIN_SMS_SENT, failed>=$MIN_SMS_FAILED (within 15s)" "PROM alerts_processed=$PROM_SEND_REQ, sent=$PROM_SMS_SENT, failed=$PROM_SMS_FAILED"
 fi
 
 echo ""
@@ -553,11 +554,11 @@ echo "========================================="
 echo "Part 5: Rate Limiting Tests"
 echo "========================================="
 
-# The promtotwilio service is started with RATE_LIMIT=30.
-# By this point the Prometheus cycle tests have taken well over a minute, so the
-# rate limit window has reset at least once. We fire more than 30 requests in a
-# tight loop; regardless of how many tokens remain in the current window, we are
-# guaranteed to see both 200s and 429s.
+# The promtotwilio service is started with RATE_LIMIT=30 (fixed one-minute
+# window). We send requests until one is rejected. Up to 65 requests in a tight
+# loop span at most one window reset (at most 60 tokens), so a 429 is
+# guaranteed. The rejected response is kept for Test 17, so that test doesn't
+# depend on the window state either.
 
 # Test 16: Verify rate limiting kicks in after the limit is exceeded
 echo ""
@@ -566,8 +567,9 @@ RATE_PAYLOAD='{"version":"4","status":"firing","alerts":[{"annotations":{"summar
 GOT_200=0
 GOT_429=0
 
-for i in $(seq 1 35); do
-    HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+RATE_LIMIT_CODE=""
+for i in $(seq 1 65); do
+    HTTP_CODE=$(curl -s -o /tmp/rate_response.txt -w "%{http_code}" \
         -X POST \
         -H "Content-Type: application/json" \
         -d "$RATE_PAYLOAD" \
@@ -576,6 +578,9 @@ for i in $(seq 1 35); do
         GOT_200=$((GOT_200 + 1))
     elif [ "$HTTP_CODE" = "429" ]; then
         GOT_429=$((GOT_429 + 1))
+        RATE_LIMIT_CODE=$HTTP_CODE
+        cp /tmp/rate_response.txt /tmp/rate_limit_body.txt
+        break
     fi
 done
 
@@ -590,12 +595,7 @@ fi
 # Test 17: Verify 429 response body
 echo ""
 echo "Test 17: Rate limited response returns 429 with correct body"
-HTTP_CODE=$(curl -s -o /tmp/rate_limit_body.txt -w "%{http_code}" \
-    -X POST \
-    -H "Content-Type: application/json" \
-    -d "$RATE_PAYLOAD" \
-    "$APP_URL/send?receiver=%2B1234567890")
-
+HTTP_CODE=$RATE_LIMIT_CODE
 BODY=$(cat /tmp/rate_limit_body.txt 2>/dev/null)
 
 if [ "$HTTP_CODE" = "429" ] && echo "$BODY" | grep -q "rate limit exceeded"; then
