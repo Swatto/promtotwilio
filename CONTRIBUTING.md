@@ -27,6 +27,11 @@ the Dockerfiles to the fixed Go patch release and cut a new release.
 Run it locally with `make vuln` (source) or `make vuln-image` (Docker
 image binary).
 
+The same workflow lints the workflows themselves with zizmor; run it
+locally with `uvx zizmor --offline .github`. Its version is pinned by hand
+in `security.yml` (the action's `version:` input), since Dependabot bumps
+the action, not the tool it runs; bump it when you touch the file.
+
 ## Pull Requests
 
 1. Fork the repo and create your branch from `main`
