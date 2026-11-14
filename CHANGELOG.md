@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.8](https://github.com/Swatto/promtotwilio/compare/v1.10.7...v1.10.8) (2026-11-14)
+
+
+### Dependencies
+
+* **docker:** update Go to 1.27.4 for stdlib security fix ([#66](https://github.com/Swatto/promtotwilio/issues/66)) ([5fec255](https://github.com/Swatto/promtotwilio/commit/5fec2550ef3092902c5a980b9b004a85cf85f8cd))
+
 ## [1.10.7](https://github.com/Swatto/promtotwilio/compare/v1.10.6...v1.10.7) (2026-11-03)
 
 
