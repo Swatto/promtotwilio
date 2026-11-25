@@ -1,3 +1,3 @@
 module github.com/swatto/promtotwilio
 
-go 1.27
+go 1.27.4
