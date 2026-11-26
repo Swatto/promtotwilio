@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.10.9](https://github.com/Swatto/promtotwilio/compare/v1.10.8...v1.10.9) (2026-11-26)
+
+
+### Dependencies
+
+* **docker:** bump golang from `0a5f7fe` to `70bd7dd` ([#73](https://github.com/Swatto/promtotwilio/issues/73)) ([a2c053f](https://github.com/Swatto/promtotwilio/commit/a2c053f175b75d1d480f0b3cabf86f6d82926b47))
+
 ## [1.10.8](https://github.com/Swatto/promtotwilio/compare/v1.10.7...v1.10.8) (2026-11-14)
 
 
